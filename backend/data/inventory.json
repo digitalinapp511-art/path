@@ -1,0 +1,86 @@
+{
+  "items": [
+    {
+      "id": "inv-1",
+      "name": "EDTA Vacutainer Vials (Purple 3ml)",
+      "code": "VIAL-EDTA",
+      "category": "Vials",
+      "currentStock": 120,
+      "initialStock": 150,
+      "unit": "vials",
+      "reorderLevel": 25,
+      "costPerUnit": 6.5,
+      "lastUpdated": "10:11:19 AM"
+    },
+    {
+      "id": "inv-2",
+      "name": "SST Gel & Clot Activator Vials (Yellow 4ml)",
+      "code": "VIAL-SST",
+      "category": "Vials",
+      "currentStock": 95,
+      "initialStock": 120,
+      "unit": "vials",
+      "reorderLevel": 20,
+      "costPerUnit": 8,
+      "lastUpdated": "10:11:19 AM"
+    },
+    {
+      "id": "inv-3",
+      "name": "Sodium Fluoride Vials (Grey 2ml)",
+      "code": "VIAL-GREY",
+      "category": "Vials",
+      "currentStock": 75,
+      "initialStock": 100,
+      "unit": "vials",
+      "reorderLevel": 15,
+      "costPerUnit": 5,
+      "lastUpdated": "10:11:19 AM"
+    },
+    {
+      "id": "inv-4",
+      "name": "CBC 5-Part Lyse & Diluent Kit (Automated)",
+      "code": "KIT-CBC",
+      "category": "Reagents",
+      "currentStock": 280,
+      "initialStock": 300,
+      "unit": "tests",
+      "reorderLevel": 40,
+      "costPerUnit": 22,
+      "lastUpdated": "10:11:19 AM"
+    },
+    {
+      "id": "inv-5",
+      "name": "Biochemistry Multi-Enzyme Reagent (LFT/KFT/Lipid)",
+      "code": "KIT-BIO",
+      "category": "Reagents",
+      "currentStock": 210,
+      "initialStock": 250,
+      "unit": "tests",
+      "reorderLevel": 35,
+      "costPerUnit": 30,
+      "lastUpdated": "10:11:19 AM"
+    },
+    {
+      "id": "inv-6",
+      "name": "CLIA Thyroid Micro-well Cartridge (T3/T4/TSH)",
+      "code": "KIT-THYROID",
+      "category": "Reagents",
+      "currentStock": 65,
+      "initialStock": 80,
+      "unit": "cartridges",
+      "reorderLevel": 15,
+      "costPerUnit": 55,
+      "lastUpdated": "10:11:19 AM"
+    }
+  ],
+  "logs": [
+    {
+      "id": "LOG-1795150209134",
+      "orderNumber": "RESET",
+      "patientName": "Admin",
+      "action": "MANUAL_REFILL",
+      "details": "All reagents, kits and vials reset to factory standard stock",
+      "timestamp": "10:20:09 AM"
+    }
+  ]
+}

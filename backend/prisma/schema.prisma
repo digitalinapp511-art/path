@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// 1. SAAS MULTI-TENANCY & USERS
+// -------------------------------------------------------------
+
+enum UserRole {
+  SUPER_ADMIN
+  LAB_ADMIN
+  RECEPTIONIST
+  TECHNICIAN
+  PATHOLOGIST
+  PHLEBOTOMIST
+}
+
+model Tenant {
+  id           String        @id @default(uuid())
+  labName      String
+  email        String        @unique
+  phone        String
+  licenseNo    String?
+  address      String?
+  logoUrl      String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  branches     Branch[]
+  users        User[]
+  patients     Patient[]
+  doctors      Doctor[]
+  tests        TestMaster[]
+  orders       TestOrder[]
+}
+
+model Branch {
+  id         String      @id @default(uuid())
+  tenantId   String
+  name       String
+  city       String
+  phone      String?
+  createdAt  DateTime    @default(now())
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users      User[]
+  orders     TestOrder[]
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String
+  branchId     String?
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         UserRole
+  signatureUrl String?    // Pathologist digital signature
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch       Branch?    @relation(fields: [branchId], references: [id])
+  reportsApproved Report[]
+}
+
+// -------------------------------------------------------------
+// 2. PATIENTS & DOCTORS
+// -------------------------------------------------------------
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model Patient {
+  id           String      @id @default(uuid())
+  tenantId     String
+  uhid         String      @unique // Unique Health ID (e.g. UHID-1001)
+  fullName     String
+  age          Int
+  gender       Gender
+  phone        String
+  email        String?
+  address      String?
+  createdAt    DateTime    @default(now())
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders       TestOrder[]
+}
+
+model Doctor {
+  id           String      @id @default(uuid())
+  tenantId     String
+  fullName     String
+  degree       String?     // MBBS, MD, etc.
+  hospital     String?
+  phone        String?
+  commissionPct Float      @default(0.0) // Doctor Referral Commission %
+  createdAt    DateTime    @default(now())
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders       TestOrder[]
+}
+
+// -------------------------------------------------------------
+// 3. TEST MASTER & REFERENCE RANGES
+// -------------------------------------------------------------
+
+model TestMaster {
+  id           String          @id @default(uuid())
+  tenantId     String
+  testCode     String          // e.g. CBC, LFT, KFT
+  testName     String
+  category     String          // Hematology, Biochemistry, etc.
+  price        Float
+  sampleType   String          // Blood, Urine, etc.
+  vialColor    String?         // Purple (EDTA), Red, Yellow
+  createdAt    DateTime        @default(now())
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parameters   TestParameter[]
+  orderItems   TestOrderItem[]
+}
+
+model TestParameter {
+  id           String           @id @default(uuid())
+  testId       String
+  name         String           // e.g. Hemoglobin, Platelet Count
+  unit         String           // g/dL, /cumm
+  defaultValue String?
+  
+  test         TestMaster       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  ranges       ReferenceRange[]
+  results      TestResult[]
+}
+
+model ReferenceRange {
+  id           String        @id @default(uuid())
+  parameterId  String
+  gender       Gender?       // null = Applicable to all
+  minAgeYears  Int           @default(0)
+  maxAgeYears  Int           @default(120)
+  normalLow    Float
+  normalHigh   Float
+  criticalLow  Float?
+  criticalHigh Float?
+
+  parameter    TestParameter @relation(fields: [parameterId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 4. ORDERS, SAMPLES & BARCODES
+// -------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING
+  SAMPLE_COLLECTED
+  IN_LAB
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model TestOrder {
+  id            String        @id @default(uuid())
+  tenantId      String
+  branchId      String
+  patientId     String
+  doctorId      String?
+  orderNumber   String        @unique // e.g. ORD-2026-0001
+  totalAmount   Float
+  discountAmount Float        @default(0.0)
+  paidAmount    Float         @default(0.0)
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+  createdAt     DateTime      @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  doctor        Doctor?       @relation(fields: [doctorId], references: [id])
+  orderItems    TestOrderItem[]
+  samples       Sample[]
+  report        Report?
+}
+
+model TestOrderItem {
+  id           String     @id @default(uuid())
+  orderId      String
+  testId       String
+  price        Float
+
+  order        TestOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  test         TestMaster @relation(fields: [testId], references: [id])
+}
+
+model Sample {
+  id             String       @id @default(uuid())
+  orderId        String
+  barcode        String       @unique // Unique Barcode on Vial
+  sampleType     String
+  vialColor      String?
+  collectedAt    DateTime?
+  receivedInLabAt DateTime?
+
+  order          TestOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 5. TEST RESULTS & PATHOLOGIST APPROVAL
+// -------------------------------------------------------------
+
+enum ResultFlag {
+  NORMAL
+  LOW
+  HIGH
+  CRITICAL_LOW
+  CRITICAL_HIGH
+}
+
+enum ReportStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+model TestResult {
+  id            String        @id @default(uuid())
+  orderId       String
+  parameterId   String
+  observedValue String
+  flag          ResultFlag    @default(NORMAL)
+  notes         String?
+
+  parameter     TestParameter @relation(fields: [parameterId], references: [id])
+}
+
+model Report {
+  id              String       @id @default(uuid())
+  orderId         String       @unique
+  approvedById    String?      // Pathologist User ID
+  status          ReportStatus @default(DRAFT)
+  approvedAt      DateTime?
+  pdfUrl          String?      // Generated PDF Report URL
+  qrCodeVerificationUrl String?
+  createdAt       DateTime     @default(now())
+
+  order           TestOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  approvedBy      User?        @relation(fields: [approvedById], references: [id])
+}
