@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   X, 
   MessageSquare, 
@@ -32,7 +33,7 @@ export default function WhatsAppModal({ isOpen, onClose, order }: WhatsAppModalP
   const handleSendViaGateway = async () => {
     setLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/notifications/send-report', {
+      await axios.post(`${API_BASE_URL}/api/notifications/send-report`, {
         orderId: order.id,
         patientName: order.patient,
         phone,

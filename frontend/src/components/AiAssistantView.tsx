@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   Sparkles, 
   BrainCircuit, 
@@ -40,7 +41,7 @@ export default function AiAssistantView({ orders }: AiAssistantViewProps) {
         { name: 'Packed Cell Volume (PCV)', value: pcv }
       ];
 
-      const res = await axios.post('http://localhost:5000/api/ai/clinical-summary', {
+      const res = await axios.post(`${API_BASE_URL}/api/ai/clinical-summary`, {
         parameters: paramsToSend,
         patientInfo: patientContext,
         testName: 'Complete Blood Count (CBC)'

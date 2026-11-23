@@ -38,6 +38,7 @@ import LoginModal, { STAFF_ACCOUNTS, type StaffUser } from './components/LoginMo
 import WhatsAppModal from './components/WhatsAppModal';
 import AiAssistantView from './components/AiAssistantView';
 import { Sparkles } from 'lucide-react';
+import { API_BASE_URL } from './apiConfig';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<StaffUser>(STAFF_ACCOUNTS[3]); // Default Lab Admin
@@ -55,7 +56,7 @@ export default function App() {
   // Fetch real orders from Cloud DB on load
   const fetchOrders = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/orders');
+      const res = await axios.get(`${API_BASE_URL}/api/orders`);
       if (res.data) {
         setOrders(res.data);
       }
@@ -68,46 +69,57 @@ export default function App() {
     fetchOrders();
   }, []);
 
-  const handlePatientRegistered = (newOrder: any) => {
-    setOrders([newOrder, ...orders]);
+  const handlePatientRegistered = async (newOrder: any) => {
+    // Optimistically prepend, then fetch full DB state to ensure 100% sync
+    setOrders(prev => [newOrder, ...prev]);
+    await fetchOrders();
   };
 
   const handleResultsSubmitted = async (orderId: string, results: any[], notes?: string) => {
     try {
-      await axios.put(`http://localhost:5000/api/orders/${orderId}/results`, { results, notes });
+      await axios.put(`${API_BASE_URL}/api/orders/${orderId}/results`, { results, notes });
+      await fetchOrders();
     } catch (err) {
-      // local fallback
+      // local fallback if offline
+      setOrders(orders.map(o => o.id === orderId ? { 
+        ...o, 
+        status: 'PENDING_APPROVAL', 
+        testResults: results,
+        notes: notes || o.notes,
+        badge: 'bg-amber-50 text-amber-700 border-amber-200' 
+      } : o));
     }
-    setOrders(orders.map(o => o.id === orderId ? { 
-      ...o, 
-      status: 'PENDING_APPROVAL', 
-      testResults: results,
-      notes: notes || o.notes,
-      badge: 'bg-amber-50 text-amber-700 border-amber-200' 
-    } : o));
     setSelectedOrderForEntry(null);
   };
 
   const handleResetDatabase = async () => {
-    if (window.confirm("⚠️ Are you sure you want to delete all test patients, orders and reports? This will make the system 100% empty.")) {
+    if (window.confirm("⚠️ SECURITY AUDIT CONFIRMATION: Are you sure you want to delete all test patients, orders and reports? This will wipe the Neon Cloud Database and reset inventory.")) {
       try {
-        await axios.delete('http://localhost:5000/api/orders/clean-all');
-      } catch (err) {
-        console.log('Backend not reachable, wiping local state');
+        await axios.delete(`${API_BASE_URL}/api/orders/clean-all`, {
+          headers: {
+            'X-Admin-Key': 'PLMS_SECURE_ADMIN_MASTER_2026'
+          }
+        });
+        setOrders([]);
+        alert("✅ All records successfully cleaned and inventory reset to initial state!");
+        await fetchOrders();
+      } catch (err: any) {
+        const msg = err.response?.data?.error || err.message || 'Failed to wipe database';
+        alert(`Security Error: ${msg}`);
       }
-      setOrders([]);
-      alert("✅ All data removed successfully! System is now 100% empty.");
     }
   };
 
   const handleApproveReport = async (orderId: string) => {
     try {
-      await axios.put(`http://localhost:5000/api/orders/${orderId}/approve`);
-    } catch (err) {
-      // local fallback
+      await axios.put(`${API_BASE_URL}/api/orders/${orderId}/approve`);
+      await fetchOrders();
+      alert('Report APPROVED & Digitally Signed by Pathologist!');
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message;
+      alert(`Approval error: ${msg}`);
+      setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'APPROVED', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' } : o));
     }
-    setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'APPROVED', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' } : o));
-    alert('Report APPROVED & Digitally Signed by Pathologist!');
   };
 
   return (

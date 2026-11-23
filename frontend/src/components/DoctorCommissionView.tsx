@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   Stethoscope, 
   Users, 
@@ -52,7 +53,7 @@ export default function DoctorCommissionView() {
   const fetchDoctors = async () => {
     setLoading(true);
     try {
-      const res = await axios.get('http://localhost:5000/api/doctors');
+      const res = await axios.get(`${API_BASE_URL}/api/doctors`);
       if (res.data) {
         setDoctors(res.data);
       }
@@ -77,7 +78,7 @@ export default function DoctorCommissionView() {
     const docName = fullName.trim().startsWith('Dr.') ? fullName.trim() : `Dr. ${fullName.trim()}`;
 
     try {
-      await axios.post('http://localhost:5000/api/doctors', {
+      await axios.post(`${API_BASE_URL}/api/doctors`, {
         fullName: docName,
         degree: degree || 'MBBS',
         hospital: hospital || 'Civil Hospital',

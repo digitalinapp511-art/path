@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   X, 
   User, 
@@ -135,7 +136,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
 
   useEffect(() => {
     if (isOpen) {
-      axios.get('http://localhost:5000/api/doctors')
+      axios.get(`${API_BASE_URL}/api/doctors`)
         .then(res => {
           if (res.data && res.data.length > 0) {
             setDoctorList(res.data);
@@ -194,7 +195,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
     setIsLoading(true);
     try {
       // 🚀 SEND DATA TO BACKEND REST API (Neon Cloud Database)
-      const response = await axios.post('http://localhost:5000/api/orders', {
+      const response = await axios.post(`${API_BASE_URL}/api/orders`, {
         fullName,
         age,
         gender,

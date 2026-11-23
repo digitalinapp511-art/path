@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../apiConfig';
 import { 
   FlaskConical, 
   AlertTriangle, 
@@ -30,16 +31,24 @@ interface TechnicianEntryProps {
 }
 
 export default function TechnicianEntry({ order, onBack, onSubmitResults }: TechnicianEntryProps) {
-  // Clean empty parameters for CBC Test (ready for user entry)
-  const [parameters, setParameters] = useState<Parameter[]>([
+  // If order already has saved test results, prefill them!
+  const defaultParams: Parameter[] = [
     { id: '1', name: 'Hemoglobin (Hb)', unit: 'g/dL', normalLow: 13.0, normalHigh: 17.0, criticalLow: 7.0, criticalHigh: 20.0, value: '' },
     { id: '2', name: 'Total Leukocyte Count (TLC / WBC)', unit: '/cumm', normalLow: 4000, normalHigh: 11000, criticalLow: 2000, criticalHigh: 30000, value: '' },
     { id: '3', name: 'Platelet Count', unit: '/cumm', normalLow: 150000, normalHigh: 450000, criticalLow: 25000, criticalHigh: 1000000, value: '' },
     { id: '4', name: 'R.B.C. Count', unit: 'mil/cumm', normalLow: 4.5, normalHigh: 5.5, criticalLow: 2.5, criticalHigh: 7.0, value: '' },
     { id: '5', name: 'Packed Cell Volume (PCV)', unit: '%', normalLow: 40, normalHigh: 50, criticalLow: 20, criticalHigh: 60, value: '' },
-  ]);
+  ];
 
-  const [technicianNotes, setTechnicianNotes] = useState('');
+  const initialParams = (order.testResults && Array.isArray(order.testResults) && order.testResults.length > 0)
+    ? defaultParams.map(dp => {
+        const found = order.testResults.find((r: any) => r.name === dp.name);
+        return found ? { ...dp, value: found.value || '' } : dp;
+      })
+    : defaultParams;
+
+  const [parameters, setParameters] = useState<Parameter[]>(initialParams);
+  const [technicianNotes, setTechnicianNotes] = useState(order.notes || '');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
 
@@ -69,7 +78,7 @@ export default function TechnicianEntry({ order, onBack, onSubmitResults }: Tech
 
     setAiLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/api/ai/clinical-summary', {
+      const res = await axios.post(`${API_BASE_URL}/api/ai/clinical-summary`, {
         parameters: filledParams,
         patientInfo: order.patient,
         testName: order.tests
