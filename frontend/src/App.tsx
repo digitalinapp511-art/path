@@ -34,28 +34,30 @@ import ReportModal from './components/ReportModal';
 import InventoryView from './components/InventoryView';
 import DoctorCommissionView from './components/DoctorCommissionView';
 import ThermalReceiptModal from './components/ThermalReceiptModal';
-import LoginModal, { STAFF_ACCOUNTS, type StaffUser } from './components/LoginModal';
+import LoginModal, { type StaffUser } from './components/LoginModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import AiAssistantView from './components/AiAssistantView';
-import StaffManagementView from './components/StaffManagementView';
-import { Sparkles, ShieldCheck, UserPlus } from 'lucide-react';
+import EmployeeManagementView from './components/EmployeeManagementView';
+import EmployeeAuthScreen from './components/EmployeeAuthScreen';
+import { Sparkles, ShieldCheck, UserPlus, BadgeCheck } from 'lucide-react';
 import { API_BASE_URL } from './apiConfig';
+import {
+  initAuthInterceptors,
+  getAuthToken,
+  clearAuthSession,
+  mapEmployeeToUser
+} from './utils/auth';
+
+// Register global Bearer token & 401 handler once
+initAuthInterceptors();
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<StaffUser>(() => {
-    try {
-      const saved = localStorage.getItem('plms_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.name && parsed.role) {
-          return parsed;
-        }
-      }
-    } catch (e) {}
-    return STAFF_ACCOUNTS[3]; // Default Lab Admin
-  });
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(true);
+  const [authNotice, setAuthNotice] = useState('');
+  const [employeeRefreshCount, setEmployeeRefreshCount] = useState(0);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loginModalInitialTab, setLoginModalInitialTab] = useState<'switch' | 'login' | 'register'>('switch');
+  const [loginModalInitialTab, setLoginModalInitialTab] = useState<'switch' | 'login' | 'register' | 'profile'>('switch');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrderForEntry, setSelectedOrderForEntry] = useState<any>(null);
@@ -81,21 +83,62 @@ export default function App() {
     );
   }, [orders, searchQuery]);
 
-  // Fetch real orders from Cloud DB on load
+  // Fetch real orders from Cloud DB when authenticated
   const fetchOrders = async () => {
+    if (!getAuthToken()) return;
     try {
       const res = await axios.get(`${API_BASE_URL}/api/orders`);
       if (res.data) {
         setOrders(res.data);
       }
     } catch (e) {
-      console.log('Backend not connected yet, using local state.');
+      console.log('Could not load orders:', e);
     }
   };
 
+  // Verify live employee session on startup & listen for session expiry
   useEffect(() => {
-    fetchOrders();
+    const verifySession = async () => {
+      const token = getAuthToken();
+      if (!token) {
+        setIsVerifyingAuth(false);
+        return;
+      }
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/auth/me`);
+        if (res.data?.success && res.data?.user) {
+          const verified = mapEmployeeToUser(res.data.user);
+          localStorage.setItem('plms_current_user', JSON.stringify(verified));
+          setCurrentUser(verified);
+        } else {
+          clearAuthSession();
+        }
+      } catch (err: any) {
+        clearAuthSession();
+        if (err?.response?.data?.error) {
+          setAuthNotice(err.response.data.error);
+        }
+      } finally {
+        setIsVerifyingAuth(false);
+      }
+    };
+
+    verifySession();
+
+    const handleExpired = (ev: any) => {
+      setCurrentUser(null);
+      setOrders([]);
+      setAuthNotice(ev?.detail || 'Your employee session expired. Please authenticate again.');
+    };
+    window.addEventListener('plms:auth-expired', handleExpired);
+    return () => window.removeEventListener('plms:auth-expired', handleExpired);
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchOrders();
+    }
+  }, [currentUser?.id]);
 
   const handlePatientRegistered = async (newOrder: any) => {
     // Optimistically prepend, then fetch full DB state to ensure 100% sync
@@ -150,11 +193,48 @@ export default function App() {
     }
   };
 
+  const handleLogout = () => {
+    clearAuthSession();
+    setCurrentUser(null);
+    setOrders([]);
+    setSelectedOrderForEntry(null);
+    setActiveTab('dashboard');
+    setAuthNotice('');
+  };
+
+  if (isVerifyingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-3">
+        <div className="p-3 bg-blue-600 rounded-2xl animate-pulse">
+          <FlaskConical className="h-8 w-8 text-white" />
+        </div>
+        <p className="text-sm font-bold tracking-wide">Verifying Employee Authentication Session...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <EmployeeAuthScreen
+        sessionNotice={authNotice}
+        onAuthenticated={(user) => {
+          setAuthNotice('');
+          setCurrentUser(user);
+          if (!user.allowedTabs.includes('dashboard')) {
+            setActiveTab(user.allowedTabs[0] || 'dashboard');
+          } else {
+            setActiveTab('dashboard');
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-800">
       
       {/* 1. SIDEBAR */}
-      <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col justify-between shadow-xl shrink-0">
+      <aside className="w-60 bg-slate-900 text-slate-100 flex flex-col justify-between shadow-xl shrink-0">
         <div>
           <div className="p-5 border-b border-slate-800 flex items-center space-x-3">
             <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/30">
@@ -177,7 +257,7 @@ export default function App() {
               { id: 'inventory', label: 'Reagents & Stock', icon: Package },
               { id: 'doctors', label: 'Doctor Incentives', icon: Stethoscope },
               { id: 'billing', label: 'Billing & Invoices', icon: CreditCard },
-              { id: 'staff', label: 'Staff & Roles', icon: ShieldCheck },
+              { id: 'staff', label: 'Employee Management', icon: ShieldCheck },
               { id: 'settings', label: 'Lab Settings', icon: Settings },
             ]
               .filter(item => (currentUser.allowedTabs || []).includes(item.id))
@@ -221,40 +301,40 @@ export default function App() {
         
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 z-10 shrink-0 gap-3">
-          <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-800 capitalize truncate">
+          <div className="flex items-center space-x-3 flex-1 min-w-0 overflow-hidden">
+            <h2 className="text-base sm:text-lg font-bold text-slate-800 capitalize truncate">
               {selectedOrderForEntry ? 'Result Entry' : (
                 activeTab === 'dashboard' ? 'Overview Dashboard' :
                 activeTab === 'patients' ? 'Patient Management' :
                 activeTab === 'samples' ? 'Sample Collection & Barcoding' :
                 activeTab === 'technician' ? 'Technician Worklist' :
                 activeTab === 'pathologist' ? 'Pathologist Approval Queue' :
-                activeTab === 'ai-assistant' ? 'Gemini AI Clinical Pathology Assistant' :
+                activeTab === 'ai-assistant' ? 'Gemini AI Clinical Assistant' :
                 activeTab === 'inventory' ? 'Reagents & Stock Inventory' :
                 activeTab === 'doctors' ? 'Doctor Referral & Commission Tracker' :
                 activeTab === 'billing' ? 'Billing Counter & Receipts' : 
-                activeTab === 'staff' ? 'Staff Directory & Roles' : 'Lab Configuration'
+                activeTab === 'staff' ? 'Employee Management & HR' : 'Lab Configuration'
               )}
             </h2>
-            <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+            <span className="hidden xl:inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               Branch: Central Lab
             </span>
           </div>
 
-          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+          <div className="flex items-center space-x-2 shrink-0">
             <div className="relative hidden md:block">
-              <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
+              <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search UHID / Phone / Name..." 
+                placeholder="Search UHID / Phone..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-7 py-1.5 text-xs sm:text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 lg:w-64 bg-slate-50"
+                className="pl-8 pr-6 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-36 lg:w-44 xl:w-56 bg-slate-50"
               />
               {searchQuery && (
                 <button 
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 text-xs font-bold"
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-700 text-xs font-bold"
                   title="Clear search"
                 >
                   ✕
@@ -269,16 +349,30 @@ export default function App() {
 
             {/* Staff Role Switcher & User Profile Menu */}
             <div className="flex items-center space-x-2 shrink-0 pl-2 border-l border-slate-200">
+              {(currentUser.role === 'LAB_ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+                <button
+                  onClick={() => {
+                    setLoginModalInitialTab('register');
+                    setIsLoginModalOpen(true);
+                  }}
+                  className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                  title="Add New Employee (Doctor, Tech, Receptionist)"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>+ Add Employee</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
-                  setLoginModalInitialTab('register');
+                  setLoginModalInitialTab('profile');
                   setIsLoginModalOpen(true);
                 }}
-                className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition cursor-pointer"
-                title="Register New Doctor, Technician or Receptionist"
+                className="hidden lg:flex items-center space-x-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                title="My Employee ID Card, Attendance & Change Password"
               >
-                <UserPlus className="h-3.5 w-3.5" />
-                <span>+ New Staff</span>
+                <BadgeCheck className="h-3.5 w-3.5 text-blue-600" />
+                <span>{currentUser.empCode || 'My ID'}</span>
               </button>
 
               <div 
@@ -287,7 +381,7 @@ export default function App() {
                   setIsLoginModalOpen(true);
                 }}
                 className="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-xl transition"
-                title="Click to Switch Staff Role (RBAC) or Login"
+                title="Switch Authenticated Employee"
               >
                 <div className={`h-8 w-8 rounded-full ${currentUser?.color || 'bg-slate-800'} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
                   {currentUser?.name ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'US'}
@@ -300,20 +394,16 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-[10px] text-blue-600 font-semibold flex items-center space-x-0.5">
-                    <span>Switch / Login</span>
+                    <span>Switch Account</span>
                     <span>▾</span>
                   </p>
                 </div>
               </div>
 
               <button
-                onClick={() => {
-                  localStorage.removeItem('plms_current_user');
-                  setLoginModalInitialTab('login');
-                  setIsLoginModalOpen(true);
-                }}
+                onClick={handleLogout}
                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                title="Log Out of Current Session"
+                title="Log Out of Employee Session"
               >
                 <LogOut className="h-4 w-4" />
               </button>
@@ -774,19 +864,14 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB 8: STAFF & ROLES DIRECTORY */}
+              {/* TAB 8: EMPLOYEE MANAGEMENT & HR AUTH */}
               {activeTab === 'staff' && (
-                <StaffManagementView
+                <EmployeeManagementView
                   currentUser={currentUser}
+                  refreshTrigger={employeeRefreshCount}
                   onOpenRegisterModal={() => {
                     setLoginModalInitialTab('register');
                     setIsLoginModalOpen(true);
-                  }}
-                  onSelectUser={(staff) => {
-                    setCurrentUser(staff);
-                    if (!staff.allowedTabs.includes(activeTab)) {
-                      setActiveTab(staff.allowedTabs[0] || 'dashboard');
-                    }
                   }}
                 />
               )}
@@ -873,6 +958,7 @@ export default function App() {
         onClose={() => setIsLoginModalOpen(false)}
         currentUser={currentUser}
         initialTab={loginModalInitialTab}
+        onEmployeeCreated={() => setEmployeeRefreshCount(c => c + 1)}
         onSelectUser={(staff) => {
           setCurrentUser(staff);
           if (!staff.allowedTabs.includes(activeTab)) {

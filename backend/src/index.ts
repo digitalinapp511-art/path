@@ -3,6 +3,7 @@ import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import { inventoryService } from './inventoryService';
 import { orderMetaService } from './orderMetaService';
+import { employeeMetaService } from './employeeMetaService';
 import {
   securityHeadersMiddleware,
   corsOptions,
@@ -47,7 +48,13 @@ app.use(authenticateOptional);
 // -------------------------------------------------------------
 // 2. DEFAULT SEED LAB, DOCTORS & SECURED STAFF ACCOUNTS
 // -------------------------------------------------------------
+let cachedTenant: any = null;
+
 async function getOrCreateDefaultTenant() {
+  if (cachedTenant && cachedTenant.branches && cachedTenant.branches.length > 0) {
+    return cachedTenant;
+  }
+
   let tenant = await prisma.tenant.findFirst({
     include: { branches: true }
   });
@@ -82,6 +89,7 @@ async function getOrCreateDefaultTenant() {
     tenant.branches = [branch];
     console.log('🏥 Default Branch created for existing Tenant!');
   }
+  cachedTenant = tenant;
   return tenant;
 }
 
@@ -173,9 +181,71 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
+// ACTIVE EMPLOYEE AUTHENTICATION GUARD (Checks Token + Live DB Active Status)
+// -------------------------------------------------------------
+function formatEmployeeResponse(user: {
+  id: string;
+  name: string;
+  email: string;
+  role: any;
+  signatureUrl?: string | null;
+  isActive: boolean;
+  createdAt: Date;
+}) {
+  const hr = employeeMetaService.getOrCreateProfile(user);
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    signatureUrl: user.signatureUrl || null,
+    isActive: user.isActive,
+    createdAt: user.createdAt,
+    empCode: hr.empCode,
+    phone: hr.phone,
+    department: hr.department,
+    designation: hr.designation,
+    shift: hr.shift,
+    joiningDate: hr.joiningDate,
+    salary: hr.salary,
+    attendanceStatus: hr.attendanceStatus,
+    lastLoginAt: hr.lastLoginAt || null,
+    lastLoginIp: hr.lastLoginIp || null
+  };
+}
+
+function requireActiveAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  requireAuth(req, res, async () => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ success: false, error: 'Invalid session' });
+      }
+      const dbUser = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { id: true, role: true, isActive: true, name: true, email: true }
+      });
+      if (!dbUser) {
+        return res.status(401).json({ success: false, error: 'Employee account no longer exists.' });
+      }
+      if (!dbUser.isActive) {
+        return res.status(403).json({
+          success: false,
+          error: 'Employee account has been deactivated/suspended. Contact Administrator.'
+        });
+      }
+      req.user.role = dbUser.role;
+      req.user.name = dbUser.name;
+      next();
+    } catch (err) {
+      return res.status(500).json({ success: false, error: 'Authentication verification failed' });
+    }
+  });
+}
+
+// -------------------------------------------------------------
 // 4. GET ALL ORDERS (Full Neon DB + Persistent Metadata)
 // -------------------------------------------------------------
-app.get('/api/orders', async (req: Request, res: Response) => {
+app.get('/api/orders', requireActiveAuth, async (req: Request, res: Response) => {
   try {
     const tenant = await getOrCreateDefaultTenant();
 
@@ -233,7 +303,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 5. CREATE NEW PATIENT & ORDER (Input Sanitized & Persisted)
 // -------------------------------------------------------------
-app.post('/api/orders', async (req: Request, res: Response) => {
+app.post('/api/orders', requireActiveAuth, requireRole(['RECEPTIONIST', 'LAB_ADMIN', 'PHLEBOTOMIST']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { fullName, age, gender, phone, doctor, testsList, totalAmount } = req.body;
 
@@ -344,7 +414,7 @@ app.post('/api/orders', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 6. RECORD RESULTS (Technician Observations - Persisted)
 // -------------------------------------------------------------
-app.put('/api/orders/:orderNumber/results', async (req: Request, res: Response) => {
+app.put('/api/orders/:orderNumber/results', requireActiveAuth, requireRole(['TECHNICIAN', 'PATHOLOGIST', 'LAB_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orderNumber = sanitizeString(req.params.orderNumber, 50);
     const { results, notes } = req.body;
@@ -402,7 +472,7 @@ app.put('/api/orders/:orderNumber/results', async (req: Request, res: Response) 
 // -------------------------------------------------------------
 // 7. APPROVE REPORT (Pathologist Verification & Digital Signature)
 // -------------------------------------------------------------
-app.put('/api/orders/:orderNumber/approve', async (req: Request, res: Response) => {
+app.put('/api/orders/:orderNumber/approve', requireActiveAuth, requireRole(['PATHOLOGIST', 'LAB_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orderNumber = sanitizeString(req.params.orderNumber, 50);
 
@@ -414,11 +484,13 @@ app.put('/api/orders/:orderNumber/approve', async (req: Request, res: Response) 
           upsert: {
             create: {
               status: 'APPROVED',
+              approvedById: req.user?.id || null,
               approvedAt: new Date(),
               qrCodeVerificationUrl: `https://citycarepathlab.com/verify/${orderNumber}`
             },
             update: {
               status: 'APPROVED',
+              approvedById: req.user?.id || null,
               approvedAt: new Date(),
               qrCodeVerificationUrl: `https://citycarepathlab.com/verify/${orderNumber}`
             }
@@ -442,7 +514,7 @@ app.put('/api/orders/:orderNumber/approve', async (req: Request, res: Response) 
 // -------------------------------------------------------------
 // 8. DANGER ZONE: CLEAN ALL TEST DATA (Strictly Protected with Admin Key)
 // -------------------------------------------------------------
-app.delete('/api/orders/clean-all', dangerRateLimiter, requireMasterAdminKey, async (req: AuthenticatedRequest, res: Response) => {
+app.delete('/api/orders/clean-all', requireActiveAuth, dangerRateLimiter, requireMasterAdminKey, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await prisma.report.deleteMany({});
     await prisma.testResult.deleteMany({});
@@ -468,7 +540,7 @@ app.delete('/api/orders/clean-all', dangerRateLimiter, requireMasterAdminKey, as
 // -------------------------------------------------------------
 // 9. DOCTOR REFERRALS & COMMISSION MANAGEMENT
 // -------------------------------------------------------------
-app.get('/api/doctors', async (req: Request, res: Response) => {
+app.get('/api/doctors', requireActiveAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tenant = await getOrCreateDefaultTenant();
     await getOrCreateDefaultDoctors(tenant.id);
@@ -505,7 +577,7 @@ app.get('/api/doctors', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/doctors', async (req: Request, res: Response) => {
+app.post('/api/doctors', requireActiveAuth, requireRole(['LAB_ADMIN', 'RECEPTIONIST']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { fullName, degree, hospital, phone, commissionPct } = req.body;
 
@@ -542,7 +614,7 @@ app.post('/api/doctors', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 10. INVENTORY MANAGEMENT (Reagents, Vials & Low Stock Alerts)
 // -------------------------------------------------------------
-app.get('/api/inventory', (req: Request, res: Response) => {
+app.get('/api/inventory', requireActiveAuth, (req: AuthenticatedRequest, res: Response) => {
   try {
     const state = inventoryService.getInventory();
     const lowStockCount = state.items.filter(i => i.currentStock <= i.reorderLevel).length;
@@ -563,7 +635,7 @@ app.get('/api/inventory', (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/inventory/refill', async (req: Request, res: Response) => {
+app.post('/api/inventory/refill', requireActiveAuth, requireRole(['TECHNICIAN', 'LAB_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { itemId, quantity } = req.body;
     const cleanItemId = sanitizeString(itemId, 50);
@@ -582,9 +654,17 @@ app.post('/api/inventory/refill', async (req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
-// 11. AUTH & ROLE-BASED ACCESS CONTROL (STAFF LOGIN WITH CRYPTO TOKENS)
+// 11. EMPLOYEE AUTHENTICATION & COMPLETE EMPLOYEE MANAGEMENT (RBAC + HR)
 // -------------------------------------------------------------
-app.get('/api/auth/staff', async (req: Request, res: Response) => {
+const VALID_EMPLOYEE_ROLES = ['PATHOLOGIST', 'TECHNICIAN', 'RECEPTIONIST', 'PHLEBOTOMIST', 'LAB_ADMIN'];
+
+function getClientIp(req: Request): string {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.length > 0) return fwd.split(',')[0].trim();
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+async function listEmployeesHandler(req: AuthenticatedRequest, res: Response) {
   try {
     const tenant = await getOrCreateDefaultTenant();
     await getOrCreateDefaultStaffUsers(tenant.id);
@@ -603,16 +683,31 @@ app.get('/api/auth/staff', async (req: Request, res: Response) => {
       orderBy: { createdAt: 'asc' }
     });
 
-    res.json(users);
+    res.json(users.map(formatEmployeeResponse));
   } catch (error) {
-    console.error('Error fetching staff:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch staff accounts' });
+    console.error('Error fetching employees:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch employee records' });
   }
-});
+}
 
-app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: Response) => {
+async function registerEmployeeHandler(req: AuthenticatedRequest, res: Response) {
   try {
-    const { name, email, password, role, signatureUrl } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      signatureUrl,
+      phone,
+      department,
+      designation,
+      title,
+      shift,
+      joiningDate,
+      salary,
+      attendanceStatus
+    } = req.body;
+
     if (!name || !email || !password || !role) {
       return res.status(400).json({ success: false, error: 'Name, email, password, and role are required' });
     }
@@ -622,15 +717,27 @@ app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: 
     const cleanRole = sanitizeString(role, 50).toUpperCase().trim();
     const cleanSignature = signatureUrl ? sanitizeString(signatureUrl, 200).trim() : null;
 
-    const validRoles = ['PATHOLOGIST', 'TECHNICIAN', 'RECEPTIONIST', 'LAB_ADMIN'];
-    if (!validRoles.includes(cleanRole)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Invalid role. Valid roles are: PATHOLOGIST (Doctor), TECHNICIAN, RECEPTIONIST, LAB_ADMIN' 
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, error: 'Please provide a valid email address' });
+    }
+
+    if (!VALID_EMPLOYEE_ROLES.includes(cleanRole)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid role. Valid roles are: ${VALID_EMPLOYEE_ROLES.join(', ')}`
       });
     }
 
-    if (password.length < 4) {
+    // Security check: Only an authenticated Admin can provision LAB_ADMIN accounts
+    const isCallerAdmin = req.user && (req.user.role === 'LAB_ADMIN' || req.user.role === 'SUPER_ADMIN');
+    if (cleanRole === 'LAB_ADMIN' && !isCallerAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Security Policy: Only an authenticated Lab Administrator can create Admin accounts.'
+      });
+    }
+
+    if (typeof password !== 'string' || password.length < 4) {
       return res.status(400).json({ success: false, error: 'Password must be at least 4 characters long' });
     }
 
@@ -642,7 +749,7 @@ app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: 
     });
 
     if (existingUser) {
-      return res.status(409).json({ success: false, error: 'An account with this email address already exists' });
+      return res.status(409).json({ success: false, error: 'An employee account with this email already exists' });
     }
 
     const newUser = await prisma.user.create({
@@ -657,6 +764,31 @@ app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: 
       }
     });
 
+    const hrUpdates: Record<string, any> = {};
+    if (phone) hrUpdates.phone = sanitizeString(phone, 25);
+    if (department) hrUpdates.department = sanitizeString(department, 100);
+    if (designation || title) hrUpdates.designation = sanitizeString(designation || title, 120);
+    if (shift) hrUpdates.shift = sanitizeString(shift, 80);
+    if (joiningDate) hrUpdates.joiningDate = sanitizeString(joiningDate, 20);
+    if (salary !== undefined && salary !== '') hrUpdates.salary = sanitizeNumber(salary, 0, 5000000, 25000);
+    if (attendanceStatus && ['ON_DUTY', 'ON_LEAVE', 'OFF_SHIFT'].includes(attendanceStatus)) {
+      hrUpdates.attendanceStatus = attendanceStatus;
+    }
+
+    employeeMetaService.upsertProfile(newUser, hrUpdates);
+
+    employeeMetaService.recordAudit({
+      userId: newUser.id,
+      employeeName: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+      action: 'ACCOUNT_CREATED',
+      details: isCallerAdmin
+        ? `Employee account created by Admin (${req.user?.name}) as ${newUser.role}`
+        : `Self-registered employee account as ${newUser.role}`,
+      ipAddress: getClientIp(req)
+    });
+
     const token = createAuthToken({
       id: newUser.id,
       name: newUser.name,
@@ -666,58 +798,122 @@ app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: 
 
     res.status(201).json({
       success: true,
-      message: `${cleanRole} account registered successfully`,
+      message: `${cleanRole} employee account registered successfully`,
       token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        signatureUrl: newUser.signatureUrl
-      }
+      user: formatEmployeeResponse(newUser)
     });
   } catch (error) {
-    console.error('Staff registration error:', error);
-    res.status(500).json({ success: false, error: 'Failed to create staff account' });
+    console.error('Employee registration error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create employee account' });
+  }
+}
+
+// Verify currently authenticated session against Neon DB
+app.get('/api/auth/me', requireActiveAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        signatureUrl: true,
+        isActive: true,
+        createdAt: true
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Employee session invalid' });
+    }
+
+    res.json({ success: true, user: formatEmployeeResponse(user) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to verify active session' });
   }
 });
 
+// Strict Employee Authentication Login (Requires valid Email + Password + Active status)
 app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response) => {
+  const clientIp = getClientIp(req);
   try {
-    const { email, password, role } = req.body;
+    const { email, password } = req.body;
     const cleanEmail = email ? sanitizeString(email, 100).toLowerCase().trim() : '';
-    const cleanRole = role ? sanitizeString(role, 50).trim() : '';
+
+    if (!cleanEmail || typeof password !== 'string' || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Both employee email and password are required for authentication'
+      });
+    }
 
     const tenant = await getOrCreateDefaultTenant();
     await getOrCreateDefaultStaffUsers(tenant.id);
 
-    let user = null;
-    if (cleanEmail) {
-      user = await prisma.user.findFirst({
-        where: {
-          tenantId: tenant.id,
-          email: cleanEmail
-        }
-      });
-    } else if (cleanRole) {
-      user = await prisma.user.findFirst({
-        where: {
-          tenantId: tenant.id,
-          role: cleanRole as any
-        }
-      });
-    }
+    const user = await prisma.user.findFirst({
+      where: {
+        tenantId: tenant.id,
+        email: cleanEmail
+      }
+    });
 
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Account not found with provided email or role' });
+      employeeMetaService.recordAudit({
+        employeeName: 'Unknown User',
+        email: cleanEmail,
+        action: 'LOGIN_FAILED',
+        details: 'Login attempt with unregistered employee email',
+        ipAddress: clientIp
+      });
+      return res.status(401).json({ success: false, error: 'Invalid employee email or password' });
     }
 
-    // Verify password if provided
-    if (password && !verifyPassword(password, user.passwordHash)) {
-      return res.status(401).json({ success: false, error: 'Incorrect staff password' });
+    if (!user.isActive) {
+      employeeMetaService.recordAudit({
+        userId: user.id,
+        employeeName: user.name,
+        email: user.email,
+        role: user.role,
+        action: 'LOGIN_FAILED',
+        details: 'Blocked login attempt on deactivated/suspended employee account',
+        ipAddress: clientIp
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'Your employee account has been deactivated/suspended by Administrator.'
+      });
     }
 
-    // Generate cryptographic tamper-proof signed token
+    if (!verifyPassword(password, user.passwordHash)) {
+      employeeMetaService.recordAudit({
+        userId: user.id,
+        employeeName: user.name,
+        email: user.email,
+        role: user.role,
+        action: 'LOGIN_FAILED',
+        details: 'Incorrect employee password entered',
+        ipAddress: clientIp
+      });
+      return res.status(401).json({ success: false, error: 'Invalid employee email or password' });
+    }
+
+    // Update last login HR metadata & log success audit
+    employeeMetaService.upsertProfile(user, {
+      lastLoginAt: new Date().toISOString(),
+      lastLoginIp: clientIp
+    });
+
+    employeeMetaService.recordAudit({
+      userId: user.id,
+      employeeName: user.name,
+      email: user.email,
+      role: user.role,
+      action: 'LOGIN_SUCCESS',
+      details: `Authenticated successfully into ${user.role} workspace`,
+      ipAddress: clientIp
+    });
+
     const token = createAuthToken({
       id: user.id,
       name: user.name,
@@ -728,13 +924,7 @@ app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response)
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        signatureUrl: user.signatureUrl
-      }
+      user: formatEmployeeResponse(user)
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -742,10 +932,219 @@ app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response)
   }
 });
 
+// Employee registration & list routes
+app.post('/api/auth/register-staff', authRateLimiter, registerEmployeeHandler);
+app.get('/api/auth/staff', requireActiveAuth, listEmployeesHandler);
+
+app.get('/api/employees', requireActiveAuth, listEmployeesHandler);
+app.post('/api/employees', requireActiveAuth, requireRole(['LAB_ADMIN', 'SUPER_ADMIN']), registerEmployeeHandler);
+
+// Audit Logs (Admin Only) - placed before :id param routes
+app.get('/api/employees/audit-logs', requireActiveAuth, requireRole(['LAB_ADMIN', 'SUPER_ADMIN']), (req: AuthenticatedRequest, res: Response) => {
+  res.json(employeeMetaService.getAuditLogs(100));
+});
+
+// Update Employee Profile, Role, HR Metadata, or Active/Suspended Status (Admin Only)
+app.put('/api/employees/:id', requireActiveAuth, requireRole(['LAB_ADMIN', 'SUPER_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = sanitizeString(req.params.id, 100);
+    const {
+      name,
+      role,
+      signatureUrl,
+      isActive,
+      phone,
+      department,
+      designation,
+      shift,
+      joiningDate,
+      salary,
+      attendanceStatus
+    } = req.body;
+
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    if (req.user!.id === id && isActive === false) {
+      return res.status(400).json({ success: false, error: 'You cannot deactivate your own active Admin account' });
+    }
+
+    const updateData: any = {};
+    if (name && typeof name === 'string') updateData.name = sanitizeString(name, 100);
+    if (role && VALID_EMPLOYEE_ROLES.includes(String(role).toUpperCase())) {
+      if (req.user!.id === id && String(role).toUpperCase() !== 'LAB_ADMIN' && existing.role === 'LAB_ADMIN') {
+        return res.status(400).json({ success: false, error: 'Cannot downgrade your own Admin privileges' });
+      }
+      updateData.role = String(role).toUpperCase();
+    }
+    if (signatureUrl !== undefined) {
+      updateData.signatureUrl = signatureUrl ? sanitizeString(signatureUrl, 200) : null;
+    }
+    if (typeof isActive === 'boolean') {
+      updateData.isActive = isActive;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: updateData
+    });
+
+    const hrUpdates: Record<string, any> = {};
+    if (phone !== undefined) hrUpdates.phone = sanitizeString(phone, 25);
+    if (department !== undefined) hrUpdates.department = sanitizeString(department, 100);
+    if (designation !== undefined) hrUpdates.designation = sanitizeString(designation, 120);
+    if (shift !== undefined) hrUpdates.shift = sanitizeString(shift, 80);
+    if (joiningDate !== undefined) hrUpdates.joiningDate = sanitizeString(joiningDate, 20);
+    if (salary !== undefined) hrUpdates.salary = sanitizeNumber(salary, 0, 5000000, 0);
+    if (attendanceStatus && ['ON_DUTY', 'ON_LEAVE', 'OFF_SHIFT'].includes(attendanceStatus)) {
+      hrUpdates.attendanceStatus = attendanceStatus;
+    }
+
+    employeeMetaService.upsertProfile(updatedUser, hrUpdates);
+
+    const statusChanged = typeof isActive === 'boolean' && isActive !== existing.isActive;
+    employeeMetaService.recordAudit({
+      userId: updatedUser.id,
+      employeeName: updatedUser.name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      action: statusChanged ? 'STATUS_CHANGED' : 'PROFILE_UPDATED',
+      details: statusChanged
+        ? `Account ${updatedUser.isActive ? 'ACTIVATED' : 'SUSPENDED'} by ${req.user!.name}`
+        : `Employee profile updated by ${req.user!.name}`,
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({
+      success: true,
+      message: 'Employee record updated successfully',
+      user: formatEmployeeResponse(updatedUser)
+    });
+  } catch (error) {
+    console.error('Error updating employee:', error);
+    res.status(500).json({ success: false, error: 'Failed to update employee record' });
+  }
+});
+
+// Update Attendance / Duty Status (Admin or Self)
+app.put('/api/employees/:id/attendance', requireActiveAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = sanitizeString(req.params.id, 100);
+    const { attendanceStatus } = req.body;
+    const isAdmin = req.user!.role === 'LAB_ADMIN' || req.user!.role === 'SUPER_ADMIN';
+
+    if (!isAdmin && req.user!.id !== id) {
+      return res.status(403).json({ success: false, error: 'Not authorized to change another employee duty status' });
+    }
+
+    if (!['ON_DUTY', 'ON_LEAVE', 'OFF_SHIFT'].includes(attendanceStatus)) {
+      return res.status(400).json({ success: false, error: 'Invalid attendance status' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    employeeMetaService.upsertProfile(user, { attendanceStatus });
+    res.json({ success: true, user: formatEmployeeResponse(user) });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to update attendance status' });
+  }
+});
+
+// Reset / Change Employee Password (Admin or Self)
+app.put('/api/employees/:id/reset-password', requireActiveAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = sanitizeString(req.params.id, 100);
+    const { currentPassword, newPassword } = req.body;
+    const isAdmin = req.user!.role === 'LAB_ADMIN' || req.user!.role === 'SUPER_ADMIN';
+
+    if (!isAdmin && req.user!.id !== id) {
+      return res.status(403).json({ success: false, error: 'Only Lab Admin can reset another employee password' });
+    }
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 4) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 4 characters long' });
+    }
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    if (!isAdmin) {
+      if (!currentPassword || !verifyPassword(currentPassword, target.passwordHash)) {
+        return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+      }
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { passwordHash: hashPassword(newPassword) }
+    });
+
+    employeeMetaService.recordAudit({
+      userId: target.id,
+      employeeName: target.name,
+      email: target.email,
+      role: target.role,
+      action: 'PASSWORD_RESET',
+      details: req.user!.id === id ? 'Employee changed their own password' : `Password reset by Admin (${req.user!.name})`,
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({ success: true, message: `Password updated securely for ${target.name}` });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update password' });
+  }
+});
+
+// Delete Employee Account (Admin Only)
+app.delete('/api/employees/:id', requireActiveAuth, requireRole(['LAB_ADMIN', 'SUPER_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = sanitizeString(req.params.id, 100);
+    if (req.user!.id === id) {
+      return res.status(400).json({ success: false, error: 'You cannot delete your own active Admin account' });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    // Safely detach any reports approved by this user before deletion
+    await prisma.report.updateMany({
+      where: { approvedById: id },
+      data: { approvedById: null }
+    });
+
+    await prisma.user.delete({ where: { id } });
+    employeeMetaService.deleteProfile(id);
+
+    employeeMetaService.recordAudit({
+      employeeName: existing.name,
+      email: existing.email,
+      role: existing.role,
+      action: 'ACCOUNT_DELETED',
+      details: `Employee record permanently deleted by Admin (${req.user!.name})`,
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({ success: true, message: `Employee ${existing.name} removed successfully` });
+  } catch (error) {
+    console.error('Delete employee error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete employee account' });
+  }
+});
+
 // -------------------------------------------------------------
 // 12. AI CLINICAL ASSISTANT (Gemini Rule & NLP Engine)
 // -------------------------------------------------------------
-app.post('/api/ai/clinical-summary', async (req: Request, res: Response) => {
+app.post('/api/ai/clinical-summary', requireActiveAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { parameters } = req.body;
 
@@ -903,7 +1302,7 @@ app.post('/api/ai/clinical-summary', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 13. WHATSAPP & SMS REPORT NOTIFICATION DISPATCHER
 // -------------------------------------------------------------
-app.post('/api/notifications/send-report', async (req: Request, res: Response) => {
+app.post('/api/notifications/send-report', requireActiveAuth, requireRole(['RECEPTIONIST', 'PATHOLOGIST', 'LAB_ADMIN']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { orderId, patientName, phone, downloadUrl } = req.body;
 

@@ -59,6 +59,9 @@ export const corsOptions = {
     if (!origin) return callback(null, true);
     if (
       ALLOWED_ORIGINS.includes(origin) ||
+      origin.startsWith('http://192.168.') ||
+      origin.startsWith('http://10.') ||
+      origin.startsWith('http://172.') ||
       origin.endsWith('.vercel.app') ||
       origin.endsWith('.netlify.app') ||
       origin.endsWith('.onrender.com') ||

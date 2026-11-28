@@ -1,0 +1,156 @@
+{
+  "profiles": {
+    "613405d0-48b8-44b8-a0e5-8b95407d6387": {
+      "userId": "613405d0-48b8-44b8-a0e5-8b95407d6387",
+      "empCode": "EMP-1001",
+      "phone": "+91 98999 88776",
+      "department": "Administration & HR",
+      "designation": "Laboratory Director / Manager",
+      "shift": "Full Day (09:00 AM - 06:00 PM)",
+      "joiningDate": "2026-11-20",
+      "salary": 75000,
+      "attendanceStatus": "ON_DUTY",
+      "updatedAt": "2026-11-28T11:18:18.589Z",
+      "lastLoginAt": "2026-11-28T11:18:18.589Z",
+      "lastLoginIp": "::1"
+    },
+    "92eec852-62bd-48e3-b74b-6bf070edf7e2": {
+      "userId": "92eec852-62bd-48e3-b74b-6bf070edf7e2",
+      "empCode": "EMP-1002",
+      "phone": "+91 98111 22334",
+      "department": "Pathology & Reporting",
+      "designation": "M.D. (Pathology) | Consultant",
+      "shift": "Morning (09:00 AM - 05:00 PM)",
+      "joiningDate": "2026-11-20",
+      "salary": 125000,
+      "attendanceStatus": "ON_DUTY",
+      "updatedAt": "2026-11-28T11:12:21.769Z"
+    },
+    "f56b1b34-3eee-48e8-ba13-af565d8151b9": {
+      "userId": "f56b1b34-3eee-48e8-ba13-af565d8151b9",
+      "empCode": "EMP-1003",
+      "phone": "+91 98222 33445",
+      "department": "Hematology & Biochemistry Lab",
+      "designation": "Senior Lab Analyst (DMLT)",
+      "shift": "Morning (07:30 AM - 03:30 PM)",
+      "joiningDate": "2026-11-20",
+      "salary": 32000,
+      "attendanceStatus": "ON_DUTY",
+      "updatedAt": "2026-11-28T11:12:21.771Z"
+    },
+    "2fb641ff-352d-4879-a274-1e9a857b5b2b": {
+      "userId": "2fb641ff-352d-4879-a274-1e9a857b5b2b",
+      "empCode": "EMP-1004",
+      "phone": "+91 98333 44556",
+      "department": "Front Desk & Billing",
+      "designation": "Patient Care & Billing Executive",
+      "shift": "Morning (08:00 AM - 04:00 PM)",
+      "joiningDate": "2026-11-20",
+      "salary": 22000,
+      "attendanceStatus": "ON_DUTY",
+      "updatedAt": "2026-11-28T11:12:21.772Z"
+    },
+    "2cc3e8de-78a7-4ee5-b97f-d05281d1ad70": {
+      "userId": "2cc3e8de-78a7-4ee5-b97f-d05281d1ad70",
+      "empCode": "EMP-1005",
+      "phone": "+91 98100 00000",
+      "department": "Pathology & Reporting",
+      "designation": "M.D. (Pathology) | Consultant",
+      "shift": "Morning (09:00 AM - 05:00 PM)",
+      "joiningDate": "2026-11-28",
+      "salary": 125000,
+      "attendanceStatus": "ON_DUTY",
+      "updatedAt": "2026-11-28T11:12:21.773Z"
+    }
+  },
+  "auditLogs": [
+    {
+      "userId": "613405d0-48b8-44b8-a0e5-8b95407d6387",
+      "employeeName": "Admin Manager",
+      "email": "admin@citypathlab.com",
+      "role": "LAB_ADMIN",
+      "action": "LOGIN_SUCCESS",
+      "details": "Authenticated successfully into LAB_ADMIN workspace",
+      "ipAddress": "::1",
+      "id": "AUD-1795864698590-558",
+      "timestamp": "2026-11-28T11:18:18.590Z"
+    },
+    {
+      "employeeName": "Vikram Test Tech",
+      "email": "vikram.test@citypathlab.com",
+      "role": "TECHNICIAN",
+      "action": "ACCOUNT_DELETED",
+      "details": "Employee record permanently deleted by Admin (Admin Manager)",
+      "ipAddress": "::1",
+      "id": "AUD-1795864667414-431",
+      "timestamp": "2026-11-28T11:17:47.414Z"
+    },
+    {
+      "userId": "b58a6c58-4dd8-40df-a750-c252202ead98",
+      "employeeName": "Vikram Test Tech",
+      "email": "vikram.test@citypathlab.com",
+      "role": "TECHNICIAN",
+      "action": "LOGIN_FAILED",
+      "details": "Blocked login attempt on deactivated/suspended employee account",
+      "ipAddress": "::1",
+      "id": "AUD-1795864664960-627",
+      "timestamp": "2026-11-28T11:17:44.960Z"
+    },
+    {
+      "userId": "b58a6c58-4dd8-40df-a750-c252202ead98",
+      "employeeName": "Vikram Test Tech",
+      "email": "vikram.test@citypathlab.com",
+      "role": "TECHNICIAN",
+      "action": "STATUS_CHANGED",
+      "details": "Account SUSPENDED by Admin Manager",
+      "ipAddress": "::1",
+      "id": "AUD-1795864663360-379",
+      "timestamp": "2026-11-28T11:17:43.360Z"
+    },
+    {
+      "userId": "b58a6c58-4dd8-40df-a750-c252202ead98",
+      "employeeName": "Vikram Test Tech",
+      "email": "vikram.test@citypathlab.com",
+      "role": "TECHNICIAN",
+      "action": "LOGIN_SUCCESS",
+      "details": "Authenticated successfully into TECHNICIAN workspace",
+      "ipAddress": "::1",
+      "id": "AUD-1795864661759-327",
+      "timestamp": "2026-11-28T11:17:41.759Z"
+    },
+    {
+      "userId": "b58a6c58-4dd8-40df-a750-c252202ead98",
+      "employeeName": "Vikram Test Tech",
+      "email": "vikram.test@citypathlab.com",
+      "role": "TECHNICIAN",
+      "action": "ACCOUNT_CREATED",
+      "details": "Employee account created by Admin (Admin Manager) as TECHNICIAN",
+      "ipAddress": "::1",
+      "id": "AUD-1795864660288-233",
+      "timestamp": "2026-11-28T11:17:40.288Z"
+    },
+    {
+      "userId": "613405d0-48b8-44b8-a0e5-8b95407d6387",
+      "employeeName": "Admin Manager",
+      "email": "admin@citypathlab.com",
+      "role": "LAB_ADMIN",
+      "action": "LOGIN_SUCCESS",
+      "details": "Authenticated successfully into LAB_ADMIN workspace",
+      "ipAddress": "::1",
+      "id": "AUD-1795864655791-215",
+      "timestamp": "2026-11-28T11:17:35.791Z"
+    },
+    {
+      "userId": "613405d0-48b8-44b8-a0e5-8b95407d6387",
+      "employeeName": "Admin Manager",
+      "email": "admin@citypathlab.com",
+      "role": "LAB_ADMIN",
+      "action": "LOGIN_SUCCESS",
+      "details": "Authenticated successfully into LAB_ADMIN workspace",
+      "ipAddress": "::1",
+      "id": "AUD-1795864339549-995",
+      "timestamp": "2026-11-28T11:12:19.549Z"
+    }
+  ],
+  "nextEmpSeq": 1007
+}

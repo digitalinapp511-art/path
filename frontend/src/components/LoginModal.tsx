@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, 
-  UserCheck, 
-  FlaskConical, 
-  Stethoscope, 
-  Users, 
+import axios from 'axios';
+import {
+  ShieldCheck,
+  UserCheck,
+  FlaskConical,
+  Stethoscope,
+  Users,
   Building2,
+  Syringe,
   X,
   Lock,
   Mail,
@@ -16,152 +18,53 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Sparkles
+  Sparkles,
+  BadgeCheck,
+  Clock,
+  Phone,
+  Briefcase
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
+import {
+  mapEmployeeToUser,
+  setAuthSession,
+  type StaffUser,
+  type AttendanceStatus
+} from '../utils/auth';
 
-export interface StaffUser {
-  id: string;
-  name: string;
-  role: 'SUPER_ADMIN' | 'LAB_ADMIN' | 'PATHOLOGIST' | 'TECHNICIAN' | 'RECEPTIONIST';
-  email: string;
-  title: string;
-  color: string;
-  badge: string;
-  icon: any;
-  allowedTabs: string[];
-  signatureUrl?: string;
-}
+export type { StaffUser };
 
-export function mapRoleToStaffConfig(
-  role: string, 
-  name: string, 
-  email: string, 
-  id: string, 
-  signatureUrl?: string | null, 
-  customTitle?: string
-): StaffUser {
-  switch (role) {
-    case 'PATHOLOGIST':
-      return {
-        id,
-        name,
-        role: 'PATHOLOGIST',
-        email,
-        title: customTitle || 'M.D. (Pathology) | Chief Consultant',
-        color: 'bg-emerald-600',
-        badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        icon: Stethoscope,
-        allowedTabs: ['dashboard', 'pathologist', 'reports', 'ai-assistant'],
-        signatureUrl: signatureUrl || undefined
-      };
-    case 'TECHNICIAN':
-      return {
-        id,
-        name,
-        role: 'TECHNICIAN',
-        email,
-        title: customTitle || 'Senior Lab Analyst (Hematology/Biochem)',
-        color: 'bg-purple-600',
-        badge: 'bg-purple-50 text-purple-700 border-purple-200',
-        icon: FlaskConical,
-        allowedTabs: ['dashboard', 'samples', 'technician', 'inventory', 'ai-assistant']
-      };
-    case 'RECEPTIONIST':
-      return {
-        id,
-        name,
-        role: 'RECEPTIONIST',
-        email,
-        title: customTitle || 'Front Desk & Billing Executive',
-        color: 'bg-blue-600',
-        badge: 'bg-blue-50 text-blue-700 border-blue-200',
-        icon: Users,
-        allowedTabs: ['dashboard', 'patients', 'samples', 'billing', 'ai-assistant']
-      };
-    case 'LAB_ADMIN':
-    case 'SUPER_ADMIN':
-    default:
-      return {
-        id,
-        name,
-        role: 'LAB_ADMIN',
-        email,
-        title: customTitle || 'Laboratory Director / General Manager',
-        color: 'bg-slate-900',
-        badge: 'bg-slate-100 text-slate-800 border-slate-300',
-        icon: Building2,
-        allowedTabs: ['dashboard', 'patients', 'samples', 'technician', 'pathologist', 'inventory', 'doctors', 'billing', 'staff', 'settings', 'ai-assistant']
-      };
-  }
-}
-
-export const STAFF_ACCOUNTS: StaffUser[] = [
-  {
-    id: 'staff-1',
-    name: 'Dr. Rajesh Pathak',
-    role: 'PATHOLOGIST',
-    email: 'pathologist@citypathlab.com',
-    title: 'M.D. (Pathology) | Chief Consultant',
-    color: 'bg-emerald-600',
-    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    icon: Stethoscope,
-    allowedTabs: ['dashboard', 'pathologist', 'reports', 'ai-assistant'],
-    signatureUrl: 'DR_PATHAK_MD'
-  },
-  {
-    id: 'staff-2',
-    name: 'Sunil Verma',
-    role: 'TECHNICIAN',
-    email: 'tech@citypathlab.com',
-    title: 'Senior Lab Analyst (Hematology/Biochem)',
-    color: 'bg-purple-600',
-    badge: 'bg-purple-50 text-purple-700 border-purple-200',
-    icon: FlaskConical,
-    allowedTabs: ['dashboard', 'samples', 'technician', 'inventory', 'ai-assistant']
-  },
-  {
-    id: 'staff-3',
-    name: 'Pooja Sharma',
-    role: 'RECEPTIONIST',
-    email: 'reception@citypathlab.com',
-    title: 'Front Desk & Billing Executive',
-    color: 'bg-blue-600',
-    badge: 'bg-blue-50 text-blue-700 border-blue-200',
-    icon: Users,
-    allowedTabs: ['dashboard', 'patients', 'samples', 'billing', 'ai-assistant']
-  },
-  {
-    id: 'staff-4',
-    name: 'Admin Manager',
-    role: 'LAB_ADMIN',
-    email: 'admin@citypathlab.com',
-    title: 'Laboratory Director / General Manager',
-    color: 'bg-slate-900',
-    badge: 'bg-slate-100 text-slate-800 border-slate-300',
-    icon: Building2,
-    allowedTabs: ['dashboard', 'patients', 'samples', 'technician', 'pathologist', 'inventory', 'doctors', 'billing', 'staff', 'settings', 'ai-assistant']
-  }
-];
+const DEMO_PASSWORDS: Record<string, string> = {
+  'pathologist@citypathlab.com': 'path@123',
+  'tech@citypathlab.com': 'tech@123',
+  'reception@citypathlab.com': 'rec@123',
+  'admin@citypathlab.com': 'admin@123'
+};
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: StaffUser | null;
   onSelectUser: (user: StaffUser) => void;
-  initialTab?: 'switch' | 'login' | 'register';
+  onEmployeeCreated?: () => void;
+  initialTab?: 'switch' | 'login' | 'register' | 'profile';
 }
 
-export default function LoginModal({ 
-  isOpen, 
-  onClose, 
-  currentUser, 
-  onSelectUser, 
-  initialTab = 'switch' 
+export default function LoginModal({
+  isOpen,
+  onClose,
+  currentUser,
+  onSelectUser,
+  onEmployeeCreated,
+  initialTab = 'switch'
 }: LoginModalProps) {
-  const [activeTab, setActiveTab] = useState<'switch' | 'login' | 'register'>(initialTab);
-  const [staffList, setStaffList] = useState<StaffUser[]>(STAFF_ACCOUNTS);
+  const [activeTab, setActiveTab] = useState<'switch' | 'login' | 'register' | 'profile'>(initialTab);
+  const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [isLoadingStaff, setIsLoadingStaff] = useState(false);
+
+  // Switch prompt state
+  const [pendingSwitchUser, setPendingSwitchUser] = useState<StaffUser | null>(null);
+  const [switchPassword, setSwitchPassword] = useState('');
 
   // Login Form States
   const [loginEmail, setLoginEmail] = useState('');
@@ -172,19 +75,40 @@ export default function LoginModal({
 
   // Registration Form States
   const [regName, setRegName] = useState('');
-  const [regRole, setRegRole] = useState<'PATHOLOGIST' | 'TECHNICIAN' | 'RECEPTIONIST' | 'LAB_ADMIN'>('PATHOLOGIST');
+  const [regRole, setRegRole] = useState<'PATHOLOGIST' | 'TECHNICIAN' | 'RECEPTIONIST' | 'PHLEBOTOMIST' | 'LAB_ADMIN'>('TECHNICIAN');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regTitle, setRegTitle] = useState('');
+  const [regTitle, setRegTitle] = useState('Senior Lab Analyst (DMLT)');
+  const [regDepartment, setRegDepartment] = useState('Hematology & Biochemistry Lab');
+  const [regPhone, setRegPhone] = useState('');
+  const [regShift, setRegShift] = useState('Morning (08:00 AM - 04:00 PM)');
+  const [regSalary, setRegSalary] = useState('32000');
   const [regSignature, setRegSignature] = useState('');
+  const [switchAfterCreate, setSwitchAfterCreate] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regError, setRegError] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
+  // My Profile & Change Password States
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [profileMsg, setProfileMsg] = useState('');
+  const [profileErr, setProfileErr] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const isCallerAdmin = currentUser?.role === 'LAB_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
+      setLoginError('');
+      setRegError('');
+      setRegSuccess('');
+      setProfileMsg('');
+      setProfileErr('');
+      setPendingSwitchUser(null);
+      setSwitchPassword('');
       fetchLiveStaff();
     }
   }, [isOpen, initialTab]);
@@ -192,66 +116,69 @@ export default function LoginModal({
   const fetchLiveStaff = async () => {
     setIsLoadingStaff(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/staff`);
-      if (res.ok) {
-        const users = await res.json();
-        if (Array.isArray(users) && users.length > 0) {
-          const mapped = users.map((u: any) => mapRoleToStaffConfig(u.role, u.name, u.email, u.id, u.signatureUrl));
-          setStaffList(mapped);
-        }
+      const res = await axios.get(`${API_BASE_URL}/api/employees`);
+      if (Array.isArray(res.data)) {
+        setStaffList(res.data.map((u: any) => mapEmployeeToUser(u)));
       }
     } catch (e) {
-      console.log('Using default staff list');
+      console.log('Could not load employees list:', e);
     } finally {
       setIsLoadingStaff(false);
     }
   };
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const authenticateAndSwitch = async (emailVal: string, passwordVal: string) => {
     setLoginError('');
     setIsLoggingIn(true);
-
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+      const res = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+        email: emailVal.trim(),
+        password: passwordVal
       });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setLoginError(data.error || 'Login failed. Please check your credentials.');
-        setIsLoggingIn(false);
+      const data = res.data;
+      if (!data.success || !data.token || !data.user) {
+        setLoginError(data.error || 'Authentication failed.');
         return;
       }
-
-      if (data.token) {
-        localStorage.setItem('plms_auth_token', data.token);
-      }
-
-      const mapped = mapRoleToStaffConfig(
-        data.user.role, 
-        data.user.name, 
-        data.user.email, 
-        data.user.id, 
-        data.user.signatureUrl
-      );
-      
-      localStorage.setItem('plms_current_user', JSON.stringify(mapped));
+      const mapped = mapEmployeeToUser(data.user);
+      setAuthSession(data.token, mapped);
       onSelectUser(mapped);
       onClose();
-    } catch (err) {
-      setLoginError('Cannot connect to server. Check your network connection.');
+    } catch (err: any) {
+      setLoginError(err?.response?.data?.error || 'Authentication failed. Verify email & password.');
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  const handleQuickCredential = (email: string, pass: string) => {
-    setLoginEmail(email);
-    setLoginPassword(pass);
-    setLoginError('');
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await authenticateAndSwitch(loginEmail, loginPassword);
+  };
+
+  const handleRolePreset = (role: 'PATHOLOGIST' | 'TECHNICIAN' | 'RECEPTIONIST' | 'PHLEBOTOMIST' | 'LAB_ADMIN') => {
+    setRegRole(role);
+    if (role === 'PATHOLOGIST') {
+      setRegTitle('MBBS, MD (Pathology)');
+      setRegDepartment('Pathology & Reporting');
+      setRegSalary('120000');
+    } else if (role === 'TECHNICIAN') {
+      setRegTitle('Senior Lab Analyst (DMLT)');
+      setRegDepartment('Hematology & Biochemistry Lab');
+      setRegSalary('32000');
+    } else if (role === 'RECEPTIONIST') {
+      setRegTitle('Front Desk & Billing Executive');
+      setRegDepartment('Front Desk & Billing');
+      setRegSalary('22000');
+    } else if (role === 'PHLEBOTOMIST') {
+      setRegTitle('Certified Phlebotomist');
+      setRegDepartment('Sample Collection & Home Visit');
+      setRegSalary('20000');
+    } else {
+      setRegTitle('Laboratory Director / HR Manager');
+      setRegDepartment('Administration & HR');
+      setRegSalary('75000');
+    }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -260,7 +187,7 @@ export default function LoginModal({
     setRegSuccess('');
 
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
-      setRegError('Please fill all mandatory fields (Name, Email, Password).');
+      setRegError('Please fill Full Name, Email, and Password.');
       return;
     }
 
@@ -270,57 +197,105 @@ export default function LoginModal({
     }
 
     setIsRegistering(true);
-
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/register-staff`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: regName.trim(),
-          email: regEmail.trim(),
-          password: regPassword,
-          role: regRole,
-          title: regTitle.trim() || undefined,
-          signatureUrl: regSignature.trim() || (regRole === 'PATHOLOGIST' ? `DR_${regName.replace(/\s+/g, '_').toUpperCase()}` : undefined)
-        })
+      const endpoint = isCallerAdmin ? `${API_BASE_URL}/api/employees` : `${API_BASE_URL}/api/auth/register-staff`;
+      const res = await axios.post(endpoint, {
+        name: regName.trim(),
+        email: regEmail.trim(),
+        password: regPassword,
+        role: regRole,
+        designation: regTitle.trim(),
+        department: regDepartment.trim(),
+        phone: regPhone.trim() || '+91 98000 00000',
+        shift: regShift,
+        salary: parseFloat(regSalary) || 25000,
+        signatureUrl:
+          regRole === 'PATHOLOGIST'
+            ? regSignature.trim() || `DR_${regName.trim().replace(/\s+/g, '_').toUpperCase()}`
+            : undefined
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setRegError(data.error || 'Failed to create staff account.');
-        setIsRegistering(false);
+      const data = res.data;
+      if (!data.success || !data.user) {
+        setRegError(data.error || 'Failed to register employee.');
         return;
       }
 
-      setRegSuccess(`Account for ${regName} created successfully! Logging you in...`);
-      
-      if (data.token) {
-        localStorage.setItem('plms_auth_token', data.token);
-      }
+      const mapped = mapEmployeeToUser(data.user, regTitle);
+      setRegSuccess(`Employee ${data.user.name} (${data.user.empCode}) created successfully!`);
 
-      const mapped = mapRoleToStaffConfig(
-        data.user.role,
-        data.user.name,
-        data.user.email,
-        data.user.id,
-        data.user.signatureUrl,
-        regTitle
-      );
+      // Clear form
+      setRegName('');
+      setRegEmail('');
+      setRegPassword('');
+      setRegPhone('');
+      setRegSignature('');
 
-      localStorage.setItem('plms_current_user', JSON.stringify(mapped));
-
-      // Refresh staff list
       await fetchLiveStaff();
+      if (onEmployeeCreated) onEmployeeCreated();
 
-      setTimeout(() => {
-        onSelectUser(mapped);
-        onClose();
-      }, 1000);
-
-    } catch (err) {
-      setRegError('Server connection error. Please try again.');
+      if ((!isCallerAdmin || switchAfterCreate) && data.token) {
+        setAuthSession(data.token, mapped);
+        setTimeout(() => {
+          onSelectUser(mapped);
+          onClose();
+        }, 800);
+      } else {
+        setTimeout(() => {
+          onClose();
+        }, 900);
+      }
+    } catch (err: any) {
+      setRegError(err?.response?.data?.error || 'Server error creating employee.');
     } finally {
       setIsRegistering(false);
+    }
+  };
+
+  const handleAttendanceChange = async (attendanceStatus: AttendanceStatus) => {
+    if (!currentUser) return;
+    setIsUpdatingProfile(true);
+    setProfileErr('');
+    setProfileMsg('');
+    try {
+      const res = await axios.put(`${API_BASE_URL}/api/employees/${currentUser.id}/attendance`, {
+        attendanceStatus
+      });
+      if (res.data?.user) {
+        const updated = mapEmployeeToUser(res.data.user);
+        localStorage.setItem('plms_current_user', JSON.stringify(updated));
+        onSelectUser(updated);
+        setProfileMsg(`Duty status updated to ${attendanceStatus.replace('_', ' ')}`);
+      }
+    } catch (err: any) {
+      setProfileErr(err?.response?.data?.error || 'Could not update duty status');
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleSelfPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    setProfileErr('');
+    setProfileMsg('');
+    if (newPwd.length < 4) {
+      setProfileErr('New password must be at least 4 characters long.');
+      return;
+    }
+    setIsUpdatingProfile(true);
+    try {
+      const res = await axios.put(`${API_BASE_URL}/api/employees/${currentUser.id}/reset-password`, {
+        currentPassword: currentPwd,
+        newPassword: newPwd
+      });
+      setProfileMsg(res.data?.message || 'Password updated successfully!');
+      setCurrentPwd('');
+      setNewPwd('');
+    } catch (err: any) {
+      setProfileErr(err?.response?.data?.error || 'Failed to update password.');
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -328,7 +303,7 @@ export default function LoginModal({
 
   return (
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 flex flex-col">
         
         {/* Header */}
         <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
@@ -338,17 +313,17 @@ export default function LoginModal({
             </div>
             <div>
               <h3 className="font-bold text-base flex items-center space-x-2">
-                <span>PLMS Laboratory Access Portal</span>
-                <span className="text-[10px] bg-blue-500/30 text-blue-300 border border-blue-400/40 px-2 py-0.5 rounded-full font-semibold">
-                  RBAC Secured
+                <span>Employee Auth &amp; Access Portal</span>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-full font-semibold">
+                  HMAC-SHA256 Verified
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">Doctor (Pathologist), Technician, Receptionist & Admin Login</p>
+              <p className="text-xs text-slate-400">Authenticate, register new employees, or manage your shift &amp; password</p>
             </div>
           </div>
           {currentUser && (
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
             >
               <X className="h-5 w-5" />
@@ -360,136 +335,206 @@ export default function LoginModal({
         <div className="flex border-b border-slate-200 bg-slate-100/70 p-1.5 text-xs font-semibold gap-1">
           <button
             onClick={() => setActiveTab('switch')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+            className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
               activeTab === 'switch'
                 ? 'bg-white text-blue-700 shadow-sm font-bold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            <span>⚡ 1-Click Quick Demo</span>
+            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+            <span>Switch Employee</span>
           </button>
           <button
             onClick={() => setActiveTab('login')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+            className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
               activeTab === 'login'
                 ? 'bg-white text-blue-700 shadow-sm font-bold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
-            <KeyRound className="h-4 w-4" />
-            <span>Staff Login</span>
+            <KeyRound className="h-3.5 w-3.5" />
+            <span>Sign In</span>
           </button>
           <button
             onClick={() => setActiveTab('register')}
-            className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+            className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
               activeTab === 'register'
                 ? 'bg-white text-emerald-700 shadow-sm font-bold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
-            <UserPlus className="h-4 w-4 text-emerald-600" />
-            <span>➕ New Account</span>
+            <UserPlus className="h-3.5 w-3.5 text-emerald-600" />
+            <span>+ Add Employee</span>
           </button>
+          {currentUser && (
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center space-x-1.5 transition cursor-pointer ${
+                activeTab === 'profile'
+                  ? 'bg-white text-slate-900 shadow-sm font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <BadgeCheck className="h-3.5 w-3.5 text-blue-600" />
+              <span>My ID &amp; Security</span>
+            </button>
+          )}
         </div>
 
         {/* Modal Content */}
         <div className="p-6 bg-slate-50 max-h-[75vh] overflow-y-auto">
-          
-          {/* TAB 1: QUICK SWITCH (DEMO FRIENDLY) */}
+
+          {/* TAB 1: AUTHENTICATED EMPLOYEE SWITCH */}
           {activeTab === 'switch' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                  Select Staff Account to Login
+                  Verified Lab Employees (Click to Authenticate)
                 </p>
                 {isLoadingStaff && (
                   <span className="text-[10px] text-blue-600 flex items-center space-x-1">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Syncing DB...</span>
+                    <span>Loading...</span>
                   </span>
                 )}
               </div>
 
+              {loginError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
               {staffList.map((staff) => {
                 const Icon = staff.icon || Users;
                 const isSelected = currentUser?.id === staff.id;
+                const isSuspended = staff.isActive === false;
+                const demoPwd = DEMO_PASSWORDS[staff.email];
+                const isPromptOpen = pendingSwitchUser?.id === staff.id;
 
                 return (
-                  <div 
+                  <div
                     key={staff.id}
-                    onClick={() => {
-                      localStorage.setItem('plms_current_user', JSON.stringify(staff));
-                      onSelectUser(staff);
-                      onClose();
-                    }}
-                    className={`p-3.5 rounded-xl border transition cursor-pointer flex items-center justify-between bg-white shadow-sm hover:shadow-md ${
-                      isSelected 
-                        ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/20' 
+                    className={`p-3.5 rounded-xl border transition bg-white shadow-sm ${
+                      isSelected
+                        ? 'border-blue-600 ring-2 ring-blue-500/20'
+                        : isSuspended
+                        ? 'border-rose-200 bg-rose-50/30 opacity-75'
                         : 'border-slate-200 hover:border-blue-300'
                     }`}
                   >
-                    <div className="flex items-center space-x-3.5">
-                      <div className={`p-3 rounded-xl text-white ${staff.color || 'bg-slate-800'} shadow-sm`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h4 className="font-bold text-slate-900 text-sm">{staff.name}</h4>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${staff.badge || 'bg-slate-100 text-slate-700'}`}>
-                            {staff.role}
-                          </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center space-x-3.5 min-w-0">
+                        <div className={`p-2.5 rounded-xl text-white shrink-0 ${staff.color}`}>
+                          <Icon className="h-5 w-5" />
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">{staff.title}</p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{staff.email}</p>
+                        <div className="min-w-0">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            {staff.empCode && (
+                              <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                {staff.empCode}
+                              </span>
+                            )}
+                            <h4 className="font-bold text-slate-900 text-sm truncate">{staff.name}</h4>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${staff.badge}`}>
+                              {staff.role}
+                            </span>
+                            {isSuspended && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                                SUSPENDED
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">{staff.designation || staff.title}</p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">{staff.email}</p>
+                        </div>
                       </div>
+
+                      {isSelected ? (
+                        <span className="flex items-center space-x-1 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 shrink-0">
+                          <UserCheck className="h-3.5 w-3.5" />
+                          <span>Active</span>
+                        </span>
+                      ) : isSuspended ? (
+                        <span className="text-[11px] font-bold text-rose-600 shrink-0">Blocked</span>
+                      ) : (
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          {demoPwd && (
+                            <button
+                              type="button"
+                              disabled={isLoggingIn}
+                              onClick={() => authenticateAndSwitch(staff.email, demoPwd)}
+                              className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                              title={`Authenticate using demo password (${demoPwd})`}
+                            >
+                              ⚡ Demo Auth
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingSwitchUser(isPromptOpen ? null : staff);
+                              setSwitchPassword('');
+                              setLoginError('');
+                            }}
+                            className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                          >
+                            Password →
+                          </button>
+                        </div>
+                      )}
                     </div>
 
-                    {isSelected ? (
-                      <span className="flex items-center space-x-1 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                        <UserCheck className="h-3.5 w-3.5" />
-                        <span>Active</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs font-semibold text-blue-600 bg-blue-50/60 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition">
-                        Login →
-                      </span>
+                    {isPromptOpen && (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          authenticateAndSwitch(staff.email, switchPassword);
+                        }}
+                        className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2"
+                      >
+                        <input
+                          type="password"
+                          required
+                          autoFocus
+                          value={switchPassword}
+                          onChange={(e) => setSwitchPassword(e.target.value)}
+                          placeholder={`Enter password for ${staff.name}...`}
+                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isLoggingIn}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          {isLoggingIn ? 'Verifying...' : 'Verify & Switch'}
+                        </button>
+                      </form>
                     )}
                   </div>
                 );
               })}
-
-              <div className="pt-2">
-                <button
-                  onClick={() => setActiveTab('register')}
-                  className="w-full py-2.5 border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition cursor-pointer"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  <span>+ Create New Doctor, Technician or Receptionist Account</span>
-                </button>
-              </div>
             </div>
           )}
 
-          {/* TAB 2: STAFF LOGIN (EMAIL + PASSWORD) */}
+          {/* TAB 2: CREDENTIAL LOGIN */}
           {activeTab === 'login' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="text-center pb-1">
-                <h4 className="text-sm font-bold text-slate-800">Secure Staff Sign-In</h4>
-                <p className="text-xs text-slate-500">Sign in with your official laboratory staff credentials</p>
+                <h4 className="text-sm font-bold text-slate-800">Sign In with Employee Credentials</h4>
+                <p className="text-xs text-slate-500">Strict server-side PBKDF2 &amp; HMAC authentication</p>
               </div>
 
               {loginError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center space-x-2">
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{loginError}</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address / Username
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Employee Email *</label>
                 <div className="relative">
                   <Mail className="h-4 w-4 text-slate-400 absolute left-3 top-3" />
                   <input
@@ -504,9 +549,7 @@ export default function LoginModal({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Password
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
                 <div className="relative">
                   <Lock className="h-4 w-4 text-slate-400 absolute left-3 top-3" />
                   <input
@@ -514,7 +557,7 @@ export default function LoginModal({
                     required
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Enter account password"
+                    placeholder="Enter employee password"
                     className="w-full pl-9 pr-10 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
                   />
                   <button
@@ -527,71 +570,56 @@ export default function LoginModal({
                 </div>
               </div>
 
-              {/* Demo Credentials Quick Fill */}
-              <div className="p-3 bg-slate-100/80 rounded-xl border border-slate-200">
-                <p className="text-[11px] font-bold text-slate-600 mb-2">⚡ 1-Click Fill Default Passwords (Demo):</p>
+              <div className="p-3 bg-slate-100 rounded-xl border border-slate-200">
+                <p className="text-[11px] font-bold text-slate-600 mb-2">⚡ Fill Demo Credentials:</p>
                 <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickCredential('pathologist@citypathlab.com', 'path@123')}
-                    className="p-1.5 bg-white border border-slate-200 rounded-lg hover:border-emerald-400 text-left font-medium text-slate-700 hover:text-emerald-700 transition"
-                  >
-                    🩺 <span className="font-bold">Doctor:</span> path@123
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickCredential('tech@citypathlab.com', 'tech@123')}
-                    className="p-1.5 bg-white border border-slate-200 rounded-lg hover:border-purple-400 text-left font-medium text-slate-700 hover:text-purple-700 transition"
-                  >
-                    🧪 <span className="font-bold">Tech:</span> tech@123
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickCredential('reception@citypathlab.com', 'rec@123')}
-                    className="p-1.5 bg-white border border-slate-200 rounded-lg hover:border-blue-400 text-left font-medium text-slate-700 hover:text-blue-700 transition"
-                  >
-                    📋 <span className="font-bold">Reception:</span> rec@123
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickCredential('admin@citypathlab.com', 'admin@123')}
-                    className="p-1.5 bg-white border border-slate-200 rounded-lg hover:border-slate-400 text-left font-medium text-slate-700 hover:text-slate-900 transition"
-                  >
-                    🛡️ <span className="font-bold">Admin:</span> admin@123
-                  </button>
+                  {Object.entries(DEMO_PASSWORDS).map(([em, pwd]) => (
+                    <button
+                      key={em}
+                      type="button"
+                      onClick={() => {
+                        setLoginEmail(em);
+                        setLoginPassword(pwd);
+                        setLoginError('');
+                      }}
+                      className="p-1.5 bg-white border border-slate-200 rounded-lg hover:border-blue-400 text-left font-medium text-slate-700 cursor-pointer truncate"
+                    >
+                      <span className="font-bold">{em.split('@')[0]}:</span> {pwd}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold shadow-md transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 {isLoggingIn ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Verifying Credentials...</span>
+                    <span>Authenticating...</span>
                   </>
                 ) : (
                   <>
                     <UserCheck className="h-4 w-4" />
-                    <span>Sign In to Laboratory Portal</span>
+                    <span>Authenticate &amp; Sign In</span>
                   </>
                 )}
               </button>
             </form>
           )}
 
-          {/* TAB 3: REGISTER NEW ACCOUNT */}
+          {/* TAB 3: ADD / REGISTER NEW EMPLOYEE */}
           {activeTab === 'register' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              <div className="text-center pb-1">
-                <h4 className="text-sm font-bold text-slate-800">Register New Staff Account</h4>
-                <p className="text-xs text-slate-500">Create a secure login for Doctor, Technician, Receptionist or Admin</p>
+            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">Add New Employee to Directory</h4>
+                <p className="text-xs text-slate-500">Creates login credentials, RBAC permissions, and HR profile</p>
               </div>
 
               {regError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center space-x-2">
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{regError}</span>
                 </div>
@@ -604,107 +632,134 @@ export default function LoginModal({
                 </div>
               )}
 
-              {/* Role Picker */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Staff Role & Clinical Access Level *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Role &amp; Access Level *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { id: 'PATHOLOGIST', label: 'Doctor (Pathologist)', desc: 'Signs reports & clinical AI', icon: Stethoscope, color: 'text-emerald-600 border-emerald-200 bg-emerald-50/40' },
-                    { id: 'TECHNICIAN', label: 'Lab Technician', desc: 'Analyzers, test readings & stock', icon: FlaskConical, color: 'text-purple-600 border-purple-200 bg-purple-50/40' },
-                    { id: 'RECEPTIONIST', label: 'Receptionist', desc: 'Patient register & billing', icon: Users, color: 'text-blue-600 border-blue-200 bg-blue-50/40' },
-                    { id: 'LAB_ADMIN', label: 'Lab Administrator', desc: 'Full control & configurations', icon: Building2, color: 'text-slate-800 border-slate-300 bg-slate-100/50' }
+                    { id: 'PATHOLOGIST', label: 'Doctor', icon: Stethoscope, color: 'text-emerald-600' },
+                    { id: 'TECHNICIAN', label: 'Lab Tech', icon: FlaskConical, color: 'text-purple-600' },
+                    { id: 'RECEPTIONIST', label: 'Receptionist', icon: Users, color: 'text-blue-600' },
+                    { id: 'PHLEBOTOMIST', label: 'Phlebotomist', icon: Syringe, color: 'text-amber-600' },
+                    ...(isCallerAdmin ? [{ id: 'LAB_ADMIN', label: 'Lab Admin / HR', icon: Building2, color: 'text-slate-800' }] : [])
                   ].map((r) => {
                     const Icon = r.icon;
-                    const isSelected = regRole === r.id;
                     return (
-                      <div
+                      <button
                         key={r.id}
-                        onClick={() => {
-                          setRegRole(r.id as any);
-                          if (r.id === 'PATHOLOGIST' && !regTitle) setRegTitle('M.D. (Pathology)');
-                          if (r.id === 'TECHNICIAN' && !regTitle) setRegTitle('Senior Lab Technician (DMLT)');
-                          if (r.id === 'RECEPTIONIST' && !regTitle) setRegTitle('Billing & Reception Executive');
-                        }}
-                        className={`p-2.5 rounded-xl border cursor-pointer transition text-left ${
-                          isSelected 
-                            ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/30' 
-                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        type="button"
+                        onClick={() => handleRolePreset(r.id as any)}
+                        className={`p-2 rounded-xl border text-left transition flex items-center space-x-2 cursor-pointer ${
+                          regRole === r.id
+                            ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/40'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center space-x-2">
-                          <Icon className={`h-4 w-4 ${r.color.split(' ')[0]}`} />
-                          <span className="text-xs font-bold text-slate-800">{r.label}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-1">{r.desc}</p>
-                      </div>
+                        <Icon className={`h-4 w-4 shrink-0 ${r.color}`} />
+                        <span className="text-xs font-bold text-slate-800">{r.label}</span>
+                      </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Name & Title */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Full Name *
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
                   <input
                     type="text"
                     required
                     value={regName}
                     onChange={(e) => setRegName(e.target.value)}
-                    placeholder={regRole === 'PATHOLOGIST' ? 'e.g. Dr. Manish Sharma' : 'e.g. Ramesh Kumar'}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                    placeholder="e.g. Dr. Amit Verma"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Designation / Degree
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Designation</label>
                   <input
                     type="text"
                     value={regTitle}
                     onChange={(e) => setRegTitle(e.target.value)}
-                    placeholder={regRole === 'PATHOLOGIST' ? 'MBBS, MD (Pathology)' : 'DMLT / B.Sc MLT'}
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Email & Password */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Staff Email Address *
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={regDepartment}
+                    onChange={(e) => setRegDepartment(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Work Shift</label>
+                  <select
+                    value={regShift}
+                    onChange={(e) => setRegShift(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    <option>Morning (08:00 AM - 04:00 PM)</option>
+                    <option>Evening (02:00 PM - 10:00 PM)</option>
+                    <option>Night (10:00 PM - 06:00 AM)</option>
+                    <option>Full Day (09:00 AM - 06:00 PM)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Monthly Salary (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={regSalary}
+                    onChange={(e) => setRegSalary(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Employee Email *</label>
                   <input
                     type="email"
                     required
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="doctor@citypathlab.com"
-                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                    placeholder="amit@citypathlab.com"
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Account Password *
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
                   <div className="relative">
                     <input
                       type={showRegPassword ? 'text' : 'password'}
                       required
                       value={regPassword}
                       onChange={(e) => setRegPassword(e.target.value)}
-                      placeholder="Min 4 characters"
-                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white pr-8"
+                      placeholder="Min 4 chars"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white pr-8 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
                     <button
                       type="button"
                       onClick={() => setShowRegPassword(!showRegPassword)}
-                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       {showRegPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                     </button>
@@ -712,63 +767,194 @@ export default function LoginModal({
                 </div>
               </div>
 
-              {/* Pathologist Digital Signature Code */}
               {regRole === 'PATHOLOGIST' && (
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Doctor Digital Signature Code (Appears on Official PDF Reports)
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Doctor Digital Signature Code</label>
                   <input
                     type="text"
                     value={regSignature}
                     onChange={(e) => setRegSignature(e.target.value)}
-                    placeholder="e.g. DR_MANISH_MD_REG_87654"
-                    className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+                    placeholder="e.g. DR_AMIT_MD_REG_87654"
+                    className="w-full px-3 py-2 text-xs font-mono border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    This digital ID will automatically brand signed reports with QR verification.
-                  </p>
                 </div>
+              )}
+
+              {isCallerAdmin && (
+                <label className="flex items-center space-x-2 text-xs text-slate-600 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={switchAfterCreate}
+                    onChange={(e) => setSwitchAfterCreate(e.target.checked)}
+                    className="rounded border-slate-300 text-emerald-600"
+                  />
+                  <span>Log out of Admin and sign in immediately as this new employee</span>
+                </label>
               )}
 
               <button
                 type="submit"
                 disabled={isRegistering}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center justify-center space-x-2 cursor-pointer"
               >
                 {isRegistering ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Registering Account in Database...</span>
+                    <span>Saving Employee to Database...</span>
                   </>
                 ) : (
                   <>
                     <UserPlus className="h-4 w-4" />
-                    <span>Create Account & Sign In Directly</span>
+                    <span>{isCallerAdmin && !switchAfterCreate ? 'Save Employee to Directory' : 'Create Account & Sign In'}</span>
                   </>
                 )}
               </button>
             </form>
           )}
 
+          {/* TAB 4: MY EMPLOYEE ID CARD & PASSWORD */}
+          {activeTab === 'profile' && currentUser && (
+            <div className="space-y-5">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className={`h-12 w-12 rounded-2xl ${currentUser.color} text-white flex items-center justify-center font-bold text-base shadow`}>
+                      {currentUser.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h4 className="font-bold text-slate-900">{currentUser.name}</h4>
+                        {currentUser.empCode && (
+                          <span className="text-[10px] font-mono font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+                            {currentUser.empCode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">{currentUser.designation || currentUser.title}</p>
+                      <p className="text-[11px] font-mono text-slate-400">{currentUser.email}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${currentUser.badge}`}>
+                    {currentUser.role}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-xs">
+                  <div className="flex items-center space-x-2 text-slate-600">
+                    <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                    <span>{currentUser.department || 'Pathology Lab'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-slate-600">
+                    <Clock className="h-3.5 w-3.5 text-slate-400" />
+                    <span>{currentUser.shift || 'Morning Shift'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-slate-600">
+                    <Phone className="h-3.5 w-3.5 text-slate-400" />
+                    <span>{currentUser.phone || '+91 —'}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-slate-600">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="font-semibold text-emerald-700">Authenticated Session</span>
+                  </div>
+                </div>
+
+                {/* Duty / Attendance Quick Toggle */}
+                <div className="pt-2 border-t border-slate-100">
+                  <p className="text-[11px] font-bold text-slate-600 mb-1.5">My Shift Attendance Status:</p>
+                  <div className="flex gap-2">
+                    {(['ON_DUTY', 'ON_LEAVE', 'OFF_SHIFT'] as AttendanceStatus[]).map((st) => (
+                      <button
+                        key={st}
+                        type="button"
+                        disabled={isUpdatingProfile}
+                        onClick={() => handleAttendanceChange(st)}
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                          currentUser.attendanceStatus === st
+                            ? st === 'ON_DUTY'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : st === 'ON_LEAVE'
+                              ? 'bg-amber-500 text-white border-amber-500'
+                              : 'bg-slate-700 text-white border-slate-700'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {st.replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {profileMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>{profileMsg}</span>
+                </div>
+              )}
+
+              {profileErr && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center space-x-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{profileErr}</span>
+                </div>
+              )}
+
+              {/* Change Own Password */}
+              <form onSubmit={handleSelfPasswordReset} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <h5 className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                  <KeyRound className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Change My Account Password</span>
+                </h5>
+                <div className="grid grid-cols-2 gap-3">
+                  {!isCallerAdmin && (
+                    <input
+                      type="password"
+                      required
+                      value={currentPwd}
+                      onChange={(e) => setCurrentPwd(e.target.value)}
+                      placeholder="Current password"
+                      className="px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  )}
+                  <input
+                    type="password"
+                    required
+                    value={newPwd}
+                    onChange={(e) => setNewPwd(e.target.value)}
+                    placeholder="New password (min 4 chars)"
+                    className={`px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                      isCallerAdmin ? 'col-span-2' : ''
+                    }`}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isUpdatingProfile}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  {isUpdatingProfile ? 'Updating...' : 'Update Password'}
+                </button>
+              </form>
+            </div>
+          )}
+
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
           <span className="flex items-center space-x-1">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            <span>SOP Standard: Medical access strictly gated by role</span>
+            <span>Authenticated RBAC Enforcement Active</span>
           </span>
           {currentUser && (
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-semibold transition cursor-pointer"
             >
               Close
             </button>
           )}
         </div>
-
       </div>
     </div>
   );
