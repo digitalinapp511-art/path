@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from '../apiConfig';
-import { getParametersForOrder, TestParameterDef } from '../utils/testParameters';
+import { getParametersForOrder, type TestParameterDef } from '../utils/testParameters';
 import { 
   FlaskConical, 
   AlertTriangle, 

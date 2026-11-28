@@ -19,7 +19,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { API_BASE_URL } from '../apiConfig';
-import { StaffUser, mapRoleToStaffConfig, STAFF_ACCOUNTS } from './LoginModal';
+import { type StaffUser, mapRoleToStaffConfig, STAFF_ACCOUNTS } from './LoginModal';
 
 interface StaffManagementViewProps {
   currentUser: StaffUser;
