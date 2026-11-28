@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { X, Printer, Download, QrCode } from 'lucide-react';
+import { getDepartmentForTest } from '../utils/testParameters';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -13,13 +14,19 @@ export default function ReportModal({ isOpen, onClose, order }: ReportModalProps
   if (!isOpen || !order) return null;
 
   const isApproved = order.status === 'APPROVED' || order.status === 'COMPLETED';
+  const deptInfo = getDepartmentForTest(order.tests || '');
 
   // Helper to interpret parameter flags
   const getFlagFromVal = (valStr: string, low: number, high: number) => {
+    if (!valStr || !valStr.trim()) return 'PENDING';
+    const lower = valStr.toLowerCase().trim();
+    if (lower.includes('neg') || lower.includes('nil') || lower.includes('clear') || lower.includes('normal')) return 'NORMAL';
+    if (lower.includes('pos') || lower.includes('reactive') || lower.includes('present')) return 'HIGH';
+
     const v = parseFloat(valStr);
-    if (isNaN(v)) return 'PENDING';
-    if (v < low) return 'LOW';
-    if (v > high) return 'HIGH';
+    if (isNaN(v)) return 'RECORDED';
+    if (low > 0 && v < low) return 'LOW';
+    if (high > 0 && v > high) return 'HIGH';
     return 'NORMAL';
   };
 
@@ -30,7 +37,7 @@ export default function ReportModal({ isOpen, onClose, order }: ReportModalProps
         parameter: p.name,
         observed: p.value ? p.value : 'Pending',
         unit: p.unit,
-        normal: `${p.normalLow} - ${p.normalHigh}`,
+        normal: (p.normalLow === 0 && p.normalHigh === 0) ? 'Negative / Nil' : `${p.normalLow} - ${p.normalHigh}`,
         flag: p.value ? getFlagFromVal(p.value, p.normalLow, p.normalHigh) : 'PENDING'
       }))
     : [];
@@ -103,7 +110,7 @@ export default function ReportModal({ isOpen, onClose, order }: ReportModalProps
             <div><span class="demo-label">Sample Type</span><span class="demo-val">${order.vial || 'Whole Blood (EDTA)'}</span></div>
           </div>
 
-          <div class="test-header">DEPARTMENT OF HEMATOLOGY — ${order.tests || 'COMPLETE BLOOD COUNT (CBC)'}</div>
+          <div class="test-header">${deptInfo.department} — ${order.tests || 'COMPLETE BLOOD COUNT (CBC)'}</div>
 
           <table>
             <thead>
@@ -379,8 +386,8 @@ export default function ReportModal({ isOpen, onClose, order }: ReportModalProps
 
             {/* C. TEST TITLE */}
             <div className="bg-slate-900 text-white px-3 py-1.5 rounded font-bold text-[10px] sm:text-xs uppercase tracking-wider mb-3 flex justify-between items-center">
-              <span>DEPARTMENT OF HEMATOLOGY — {order.tests || 'COMPLETE BLOOD COUNT (CBC)'}</span>
-              <span className="text-[9px] text-slate-300 font-normal">Method: Automated 5-Part</span>
+              <span>{deptInfo.department} — {order.tests || 'COMPLETE BLOOD COUNT (CBC)'}</span>
+              <span className="text-[9px] text-slate-300 font-normal">{deptInfo.method}</span>
             </div>
 
             {/* D. PARAMETERS TABLE */}

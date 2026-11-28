@@ -134,6 +134,24 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const resetForm = () => {
+    setFullName('');
+    setAge('');
+    setGender('MALE');
+    setPhone('');
+    setDoctor('Self / Walk-in');
+    setSelectedTests([]);
+    setDiscount(0);
+    setShowBarcodePreview(false);
+    setNewOrderData(null);
+    setSearchQuery('');
+  };
+
+  const handleCloseModal = () => {
+    resetForm();
+    onClose();
+  };
+
   useEffect(() => {
     if (isOpen) {
       axios.get(`${API_BASE_URL}/api/doctors`)
@@ -143,6 +161,8 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
           }
         })
         .catch(e => console.log('Doctor fetch note:', e));
+    } else {
+      resetForm();
     }
   }, [isOpen]);
 
@@ -235,7 +255,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
             </div>
           </div>
           <button 
-            onClick={onClose} 
+            onClick={handleCloseModal} 
             className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
           >
             <X className="h-5 w-5" />
@@ -539,7 +559,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
             <div className="flex justify-end space-x-3 pt-1">
               <button 
                 type="button" 
-                onClick={onClose}
+                onClick={handleCloseModal}
                 className="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
               >
                 Cancel
@@ -612,8 +632,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
               <button 
                 onClick={() => {
                   alert('Direct Thermal Printer ZPL Command Sent!');
-                  setShowBarcodePreview(false);
-                  onClose();
+                  handleCloseModal();
                 }}
                 className="flex items-center space-x-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 cursor-pointer"
               >
@@ -621,10 +640,7 @@ export default function NewPatientModal({ isOpen, onClose, onPatientRegistered }
                 <span>Print Sticker (Thermal)</span>
               </button>
               <button 
-                onClick={() => {
-                  setShowBarcodePreview(false);
-                  onClose();
-                }}
+                onClick={handleCloseModal}
                 className="px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200 cursor-pointer"
               >
                 Done

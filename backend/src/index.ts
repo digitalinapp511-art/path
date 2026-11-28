@@ -357,14 +357,19 @@ app.put('/api/orders/:orderNumber/results', async (req: Request, res: Response) 
       return res.status(404).json({ success: false, error: 'Order not found' });
     }
 
-    // 1. Update status in Neon PostgreSQL
+    // 1. Update status in Neon PostgreSQL (using upsert so it never throws if report record is missing)
     await prisma.testOrder.update({
       where: { orderNumber },
       data: {
         status: 'IN_LAB',
         report: {
-          update: {
-            status: 'PENDING_APPROVAL'
+          upsert: {
+            create: {
+              status: 'PENDING_APPROVAL'
+            },
+            update: {
+              status: 'PENDING_APPROVAL'
+            }
           }
         }
       }
@@ -406,10 +411,17 @@ app.put('/api/orders/:orderNumber/approve', async (req: Request, res: Response) 
       data: {
         status: 'COMPLETED',
         report: {
-          update: {
-            status: 'APPROVED',
-            approvedAt: new Date(),
-            qrCodeVerificationUrl: `https://citycarepathlab.com/verify/${orderNumber}`
+          upsert: {
+            create: {
+              status: 'APPROVED',
+              approvedAt: new Date(),
+              qrCodeVerificationUrl: `https://citycarepathlab.com/verify/${orderNumber}`
+            },
+            update: {
+              status: 'APPROVED',
+              approvedAt: new Date(),
+              qrCodeVerificationUrl: `https://citycarepathlab.com/verify/${orderNumber}`
+            }
           }
         }
       }
@@ -708,11 +720,85 @@ app.post('/api/ai/clinical-summary', async (req: Request, res: Response) => {
           insights.push(`Reduced Packed Cell Volume (PCV: ${val}%). Consistent with anemic profile.`);
         }
       }
+
+      // LFT (Liver Function: Bilirubin, SGOT/AST, SGPT/ALT, ALP)
+      if (name.includes('bilirubin') && val > 1.2) {
+        insights.push(`Hyperbilirubinemia detected (Bilirubin: ${val} mg/dL). Investigate for hepatocellular injury or biliary obstruction.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
+      if ((name.includes('sgpt') || name.includes('alt') || name.includes('sgot') || name.includes('ast')) && val > 45) {
+        insights.push(`Elevated liver transaminases (ALT/AST: ${val} U/L). Suggests active hepatic parenchymal inflammation.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
+      if (name.includes('alkaline phosphatase') || name.includes('alp')) {
+        if (val > 130) {
+          insights.push(`Elevated Alkaline Phosphatase (${val} U/L). Cholestatic or bone turnover etiology to be evaluated.`);
+          if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+        }
+      }
+
+      // KFT (Kidney Function: Creatinine, Urea, Uric Acid)
+      if (name.includes('creatinine') && val > 1.2) {
+        insights.push(`Elevated Serum Creatinine (${val} mg/dL). Renal filtration impairment indicated. eGFR evaluation advised.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
+      if (name.includes('urea') && !name.includes('nitrogen') && val > 45) {
+        insights.push(`Azotemia (Blood Urea: ${val} mg/dL). Prerenal dehydration or renal impairment to be correlated.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
+      if (name.includes('uric acid') && val > 7.2) {
+        insights.push(`Hyperuricemia (${val} mg/dL). Screen for gouty arthropathy or metabolic syndrome.`);
+      }
+
+      // Diabetic & Glucose (FBS, PPBS, HbA1c)
+      if ((name.includes('fasting') || name.includes('fbs')) && val > 125) {
+        insights.push(`Fasting Hyperglycemia (FBS: ${val} mg/dL). Meets diagnostic threshold for Diabetes Mellitus.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      } else if ((name.includes('fasting') || name.includes('fbs')) && val > 100) {
+        insights.push(`Impaired Fasting Glucose (FBS: ${val} mg/dL). Prediabetes range.`);
+      }
+      if (name.includes('hba1c') && val >= 6.5) {
+        insights.push(`Elevated HbA1c (${val}%). Diagnostic for persistent chronic hyperglycemia.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
+
+      // Thyroid (TSH)
+      if (name.includes('tsh')) {
+        if (val > 5.5) {
+          insights.push(`Elevated TSH (${val} µIU/mL). Suggests Primary Hypothyroidism. Endocrine review suggested.`);
+          if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+        } else if (val < 0.35) {
+          insights.push(`Suppressed TSH (${val} µIU/mL). Hyperthyroidism or thyrotoxicosis suggested.`);
+          if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+        }
+      }
+
+      // Lipid Profile
+      if (name.includes('cholesterol') && !name.includes('hdl') && val > 200) {
+        insights.push(`Hypercholesterolemia (Total Cholesterol: ${val} mg/dL). Cardiovascular risk stratification recommended.`);
+      }
+      if (name.includes('triglyceride') && val > 150) {
+        insights.push(`Hypertriglyceridemia (${val} mg/dL). Metabolic evaluation advised.`);
+      }
+    });
+
+    // Check qualitative findings (Urine / Serology / Dengue)
+    (parameters || []).forEach((p: any) => {
+      const strVal = String(p.value || '').toLowerCase().trim();
+      const name = (p.name || '').toLowerCase();
+      if (name.includes('dengue') && (strVal.includes('pos') || strVal.includes('reactive') || strVal.includes('+'))) {
+        insights.push(`Dengue Serology POSITIVE (${p.name}: Reactive). Immediate platelet monitoring & fluid management required.`);
+        severity = 'CRITICAL';
+      }
+      if (name.includes('protein') && (strVal.includes('pos') || strVal.includes('present') || strVal.includes('+'))) {
+        insights.push(`Proteinuria detected on urinalysis (${p.name}: Positive). Renal evaluation indicated.`);
+        if (severity !== 'CRITICAL') severity = 'ABNORMAL';
+      }
     });
 
     let draftNote = '';
     if (insights.length === 0) {
-      draftNote = 'All tested hematological parameters are within biological reference limits. Red blood cells show normocytic normochromic morphology. Platelets appear adequate on smear. Clinical correlation suggested.';
+      draftNote = 'All tested biological parameters are within biological reference limits. Cytology and microscopy unremarkable. Clinical correlation suggested.';
     } else {
       draftNote = insights.join(' ') + ' Please correlate clinically with patient medical history.';
     }

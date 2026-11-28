@@ -141,7 +141,7 @@ export const authRateLimiter = createRateLimiter({
 
 export const dangerRateLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // 5 attempts per hour
+  max: 30, // 30 attempts per hour (relaxed for smooth testing & client demos)
   message: 'Too many high-privilege requests. Rate limit triggered.',
   name: 'danger'
 });

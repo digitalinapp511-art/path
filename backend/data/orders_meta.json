@@ -1,0 +1,56 @@
+{
+  "ORD-2759": {
+    "orderNumber": "ORD-2759",
+    "tests": "Complete Blood Count (CBC + ESR)",
+    "testsList": [
+      {
+        "id": "hem-1",
+        "name": "Complete Blood Count (CBC + ESR)",
+        "code": "CBC-ESR",
+        "category": "Hematology",
+        "price": 400,
+        "vial": "Purple (EDTA)",
+        "tat": "3 Hours"
+      }
+    ],
+    "testResults": [
+      {
+        "name": "Hemoglobin (Hb)",
+        "value": "7",
+        "unit": "g/dL",
+        "normalLow": 13,
+        "normalHigh": 17
+      },
+      {
+        "name": "Total Leukocyte Count (TLC / WBC)",
+        "value": "-8",
+        "unit": "/cumm",
+        "normalLow": 4000,
+        "normalHigh": 11000
+      },
+      {
+        "name": "Platelet Count",
+        "value": "-28",
+        "unit": "/cumm",
+        "normalLow": 100000,
+        "normalHigh": 100000
+      },
+      {
+        "name": "R.B.C. Count",
+        "value": "6",
+        "unit": "mil/cumm",
+        "normalLow": 4.5,
+        "normalHigh": 5.5
+      },
+      {
+        "name": "Packed Cell Volume (PCV)",
+        "value": "9",
+        "unit": "%",
+        "normalLow": 40,
+        "normalHigh": 50
+      }
+    ],
+    "notes": "Severe Microcytic Anemia detected (Hb: 7 g/dL). Urgent blood transfusion evaluation warranted. Leukopenia detected (TLC: -8/cumm). Viral infection or bone marrow suppression etiology suggested. Critical Thrombocytopenia (Platelets: -28/cumm). Risk of spontaneous bleeding. Urgent clinical review required. Reduced Packed Cell Volume (PCV: 9%). Consistent with anemic profile. Please correlate clinically with patient medical history.",
+    "updatedAt": "2026-11-27T10:41:14.853Z"
+  }
+}

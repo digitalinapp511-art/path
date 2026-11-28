@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Activity, 
@@ -52,6 +52,21 @@ export default function App() {
 
   // 100% Clean Empty Orders State (Real-time data from Cloud Database or Registration)
   const [orders, setOrders] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const displayedOrders = useMemo(() => {
+    if (!searchQuery.trim()) return orders;
+    const q = searchQuery.toLowerCase().trim();
+    return orders.filter(o => 
+      o.uhid?.toLowerCase().includes(q) ||
+      o.patient?.toLowerCase().includes(q) ||
+      o.phone?.toLowerCase().includes(q) ||
+      o.barcode?.toLowerCase().includes(q) ||
+      o.id?.toLowerCase().includes(q) ||
+      o.doctor?.toLowerCase().includes(q) ||
+      o.tests?.toLowerCase().includes(q)
+    );
+  }, [orders, searchQuery]);
 
   // Fetch real orders from Cloud DB on load
   const fetchOrders = async () => {
@@ -191,9 +206,9 @@ export default function App() {
       <main className="flex-1 flex flex-col overflow-hidden">
         
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-10 shrink-0">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-bold text-slate-800 capitalize">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 z-10 shrink-0 gap-3">
+          <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-800 capitalize truncate">
               {selectedOrderForEntry ? 'Result Entry' : (
                 activeTab === 'dashboard' ? 'Overview Dashboard' :
                 activeTab === 'patients' ? 'Patient Management' :
@@ -206,22 +221,33 @@ export default function App() {
                 activeTab === 'billing' ? 'Billing Counter & Receipts' : 'Lab Configuration'
               )}
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+            <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
               Branch: Central Lab
             </span>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="relative">
+          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <div className="relative hidden md:block">
               <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
               <input 
                 type="text" 
-                placeholder="Search UHID / Phone / Barcode..." 
-                className="pl-9 pr-4 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 bg-slate-50"
+                placeholder="Search UHID / Phone / Name..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-7 py-1.5 text-xs sm:text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 lg:w-64 bg-slate-50"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 text-xs font-bold"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             
-            <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full relative">
+            <button className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-full relative">
               <Bell className="h-5 w-5" />
               <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
             </button>
@@ -229,7 +255,7 @@ export default function App() {
             {/* Staff Role Switcher */}
             <div 
               onClick={() => setIsLoginModalOpen(true)}
-              className="flex items-center space-x-3 pl-4 border-l border-slate-200 cursor-pointer hover:bg-slate-50 p-1.5 rounded-xl transition"
+              className="flex items-center space-x-2.5 pl-3 border-l border-slate-200 cursor-pointer hover:bg-slate-50 p-1 rounded-xl transition shrink-0"
               title="Click to Switch Staff Role (RBAC)"
             >
               <div className={`h-9 w-9 rounded-full ${currentUser.color} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
@@ -353,7 +379,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {orders.map((row, i) => (
+                          {displayedOrders.map((row, i) => (
                             <tr key={i} className="hover:bg-slate-50/70 transition">
                               <td className="py-3 px-4 font-medium text-slate-800">{row.id}</td>
                               <td className="py-3 px-4 font-medium text-slate-700">{row.patient}</td>
@@ -425,7 +451,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {orders.map((p, idx) => (
+                          {displayedOrders.map((p, idx) => (
                             <tr key={idx} className="hover:bg-slate-50">
                               <td className="py-3 px-4 font-mono font-bold text-blue-600">{p.uhid}</td>
                               <td className="py-3 px-4 font-semibold text-slate-800">{p.patient}</td>
@@ -466,7 +492,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {orders.map((order, idx) => (
+                      {displayedOrders.map((order, idx) => (
                         <div key={idx} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
                           <div className="space-y-1">
                             <span className="font-mono text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded font-bold">
@@ -517,7 +543,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {orders.map((o, idx) => (
+                          {displayedOrders.map((o, idx) => (
                             <tr key={idx} className="hover:bg-slate-50">
                               <td className="py-3 px-4 font-mono font-bold text-purple-600">{o.barcode}</td>
                               <td className="py-3 px-4 font-semibold text-slate-800">{o.patient}</td>
@@ -560,7 +586,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-4">
-                      {orders.map((o, idx) => (
+                      {displayedOrders.map((o, idx) => (
                         <div key={idx} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
                           <div>
                             <div className="flex items-center space-x-2">
@@ -674,7 +700,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {orders.map((o, idx) => (
+                          {displayedOrders.map((o, idx) => (
                             <tr key={idx} className="hover:bg-slate-50">
                               <td className="py-3 px-4 font-mono font-bold text-slate-700">{o.id}</td>
                               <td className="py-3 px-4 font-medium text-slate-800">{o.patient}</td>
