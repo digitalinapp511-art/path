@@ -596,8 +596,11 @@ app.get('/api/auth/staff', async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
-        isActive: true
-      }
+        signatureUrl: true,
+        isActive: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'asc' }
     });
 
     res.json(users);
@@ -607,27 +610,106 @@ app.get('/api/auth/staff', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response) => {
+app.post('/api/auth/register-staff', authRateLimiter, async (req: Request, res: Response) => {
   try {
-    const { email, password, role } = req.body;
-    const cleanEmail = sanitizeString(email, 100).toLowerCase();
-    const cleanRole = sanitizeString(role, 50);
+    const { name, email, password, role, signatureUrl } = req.body;
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ success: false, error: 'Name, email, password, and role are required' });
+    }
+
+    const cleanEmail = sanitizeString(email, 100).toLowerCase().trim();
+    const cleanName = sanitizeString(name, 100).trim();
+    const cleanRole = sanitizeString(role, 50).toUpperCase().trim();
+    const cleanSignature = signatureUrl ? sanitizeString(signatureUrl, 200).trim() : null;
+
+    const validRoles = ['PATHOLOGIST', 'TECHNICIAN', 'RECEPTIONIST', 'LAB_ADMIN'];
+    if (!validRoles.includes(cleanRole)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid role. Valid roles are: PATHOLOGIST (Doctor), TECHNICIAN, RECEPTIONIST, LAB_ADMIN' 
+      });
+    }
+
+    if (password.length < 4) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 4 characters long' });
+    }
 
     const tenant = await getOrCreateDefaultTenant();
     await getOrCreateDefaultStaffUsers(tenant.id);
 
-    let user = await prisma.user.findFirst({
-      where: {
+    const existingUser = await prisma.user.findFirst({
+      where: { email: cleanEmail }
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ success: false, error: 'An account with this email address already exists' });
+    }
+
+    const newUser = await prisma.user.create({
+      data: {
         tenantId: tenant.id,
-        OR: [
-          { email: cleanEmail },
-          { role: cleanRole as any }
-        ]
+        name: cleanName,
+        email: cleanEmail,
+        passwordHash: hashPassword(password),
+        role: cleanRole as any,
+        signatureUrl: cleanSignature,
+        isActive: true
       }
     });
 
+    const token = createAuthToken({
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `${cleanRole} account registered successfully`,
+      token,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        signatureUrl: newUser.signatureUrl
+      }
+    });
+  } catch (error) {
+    console.error('Staff registration error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create staff account' });
+  }
+});
+
+app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const { email, password, role } = req.body;
+    const cleanEmail = email ? sanitizeString(email, 100).toLowerCase().trim() : '';
+    const cleanRole = role ? sanitizeString(role, 50).trim() : '';
+
+    const tenant = await getOrCreateDefaultTenant();
+    await getOrCreateDefaultStaffUsers(tenant.id);
+
+    let user = null;
+    if (cleanEmail) {
+      user = await prisma.user.findFirst({
+        where: {
+          tenantId: tenant.id,
+          email: cleanEmail
+        }
+      });
+    } else if (cleanRole) {
+      user = await prisma.user.findFirst({
+        where: {
+          tenantId: tenant.id,
+          role: cleanRole as any
+        }
+      });
+    }
+
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Invalid credentials or role not registered' });
+      return res.status(401).json({ success: false, error: 'Account not found with provided email or role' });
     }
 
     // Verify password if provided
@@ -650,7 +732,8 @@ app.post('/api/auth/login', authRateLimiter, async (req: Request, res: Response)
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        signatureUrl: user.signatureUrl
       }
     });
   } catch (error) {

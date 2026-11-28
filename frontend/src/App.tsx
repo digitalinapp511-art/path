@@ -37,12 +37,25 @@ import ThermalReceiptModal from './components/ThermalReceiptModal';
 import LoginModal, { STAFF_ACCOUNTS, type StaffUser } from './components/LoginModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import AiAssistantView from './components/AiAssistantView';
-import { Sparkles } from 'lucide-react';
+import StaffManagementView from './components/StaffManagementView';
+import { Sparkles, ShieldCheck, UserPlus } from 'lucide-react';
 import { API_BASE_URL } from './apiConfig';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<StaffUser>(STAFF_ACCOUNTS[3]); // Default Lab Admin
+  const [currentUser, setCurrentUser] = useState<StaffUser>(() => {
+    try {
+      const saved = localStorage.getItem('plms_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.name && parsed.role) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return STAFF_ACCOUNTS[3]; // Default Lab Admin
+  });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginModalInitialTab, setLoginModalInitialTab] = useState<'switch' | 'login' | 'register'>('switch');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrderForEntry, setSelectedOrderForEntry] = useState<any>(null);
@@ -164,9 +177,10 @@ export default function App() {
               { id: 'inventory', label: 'Reagents & Stock', icon: Package },
               { id: 'doctors', label: 'Doctor Incentives', icon: Stethoscope },
               { id: 'billing', label: 'Billing & Invoices', icon: CreditCard },
+              { id: 'staff', label: 'Staff & Roles', icon: ShieldCheck },
               { id: 'settings', label: 'Lab Settings', icon: Settings },
             ]
-              .filter(item => currentUser.allowedTabs.includes(item.id))
+              .filter(item => (currentUser.allowedTabs || []).includes(item.id))
               .map((item) => {
               const Icon = item.icon;
               const isActive = (activeTab === item.id) && !selectedOrderForEntry;
@@ -218,7 +232,8 @@ export default function App() {
                 activeTab === 'ai-assistant' ? 'Gemini AI Clinical Pathology Assistant' :
                 activeTab === 'inventory' ? 'Reagents & Stock Inventory' :
                 activeTab === 'doctors' ? 'Doctor Referral & Commission Tracker' :
-                activeTab === 'billing' ? 'Billing Counter & Receipts' : 'Lab Configuration'
+                activeTab === 'billing' ? 'Billing Counter & Receipts' : 
+                activeTab === 'staff' ? 'Staff Directory & Roles' : 'Lab Configuration'
               )}
             </h2>
             <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
@@ -252,27 +267,56 @@ export default function App() {
               <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
             </button>
 
-            {/* Staff Role Switcher */}
-            <div 
-              onClick={() => setIsLoginModalOpen(true)}
-              className="flex items-center space-x-2.5 pl-3 border-l border-slate-200 cursor-pointer hover:bg-slate-50 p-1 rounded-xl transition shrink-0"
-              title="Click to Switch Staff Role (RBAC)"
-            >
-              <div className={`h-9 w-9 rounded-full ${currentUser.color} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
-                {currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-              </div>
-              <div>
-                <div className="flex items-center space-x-1.5">
-                  <p className="text-xs font-bold text-slate-800">{currentUser.name}</p>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${currentUser.badge}`}>
-                    {currentUser.role}
-                  </span>
+            {/* Staff Role Switcher & User Profile Menu */}
+            <div className="flex items-center space-x-2 shrink-0 pl-2 border-l border-slate-200">
+              <button
+                onClick={() => {
+                  setLoginModalInitialTab('register');
+                  setIsLoginModalOpen(true);
+                }}
+                className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition cursor-pointer"
+                title="Register New Doctor, Technician or Receptionist"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>+ New Staff</span>
+              </button>
+
+              <div 
+                onClick={() => {
+                  setLoginModalInitialTab('switch');
+                  setIsLoginModalOpen(true);
+                }}
+                className="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 p-1 rounded-xl transition"
+                title="Click to Switch Staff Role (RBAC) or Login"
+              >
+                <div className={`h-8 w-8 rounded-full ${currentUser?.color || 'bg-slate-800'} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
+                  {currentUser?.name ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2) : 'US'}
                 </div>
-                <p className="text-[10px] text-blue-600 font-semibold flex items-center space-x-0.5">
-                  <span>Switch Role</span>
-                  <span>▾</span>
-                </p>
+                <div className="hidden sm:block text-left">
+                  <div className="flex items-center space-x-1">
+                    <p className="text-xs font-bold text-slate-800 truncate max-w-[120px]">{currentUser?.name}</p>
+                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold border ${currentUser?.badge || 'bg-slate-100'}`}>
+                      {currentUser?.role}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-blue-600 font-semibold flex items-center space-x-0.5">
+                    <span>Switch / Login</span>
+                    <span>▾</span>
+                  </p>
+                </div>
               </div>
+
+              <button
+                onClick={() => {
+                  localStorage.removeItem('plms_current_user');
+                  setLoginModalInitialTab('login');
+                  setIsLoginModalOpen(true);
+                }}
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                title="Log Out of Current Session"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </header>
@@ -730,7 +774,24 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB 7: LAB SETTINGS */}
+              {/* TAB 8: STAFF & ROLES DIRECTORY */}
+              {activeTab === 'staff' && (
+                <StaffManagementView
+                  currentUser={currentUser}
+                  onOpenRegisterModal={() => {
+                    setLoginModalInitialTab('register');
+                    setIsLoginModalOpen(true);
+                  }}
+                  onSelectUser={(staff) => {
+                    setCurrentUser(staff);
+                    if (!staff.allowedTabs.includes(activeTab)) {
+                      setActiveTab(staff.allowedTabs[0] || 'dashboard');
+                    }
+                  }}
+                />
+              )}
+
+              {/* TAB 9: LAB SETTINGS */}
               {activeTab === 'settings' && (
                 <div className="space-y-6 max-w-2xl">
                   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-5">
@@ -811,6 +872,7 @@ export default function App() {
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
         currentUser={currentUser}
+        initialTab={loginModalInitialTab}
         onSelectUser={(staff) => {
           setCurrentUser(staff);
           if (!staff.allowedTabs.includes(activeTab)) {
